@@ -1,5 +1,7 @@
 # MCP Workforce Nexus: The Activator
 
+Last updated: 2026-02-11
+
 **The primary engine for deploying, hardening, and unifying MCP server environments with industrial-grade reliability.**
 
 The **Activator** orchestrates the Workforce Nexus, transforming raw GitHub repositories into production-ready AI tools. It handles environment isolation, structural auditing, and atomic deployments.
