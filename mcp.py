@@ -9,6 +9,33 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 import datetime
 import os
+import re
+
+# Nexus Support: Try to load high-confidence libraries from the central venv
+def inject_nexus_env():
+    try:
+        home = Path.home() if sys.platform != "win32" else Path(os.environ['USERPROFILE'])
+        nexus_venv = home / ".mcp-tools" / ".venv"
+        if nexus_venv.exists():
+            # Add site-packages to sys.path
+            import platform
+            if platform.system() == "Windows":
+                site_pkgs = nexus_venv / "Lib" / "site-packages"
+            else:
+                # Find python version dir
+                lib_dir = nexus_venv / "lib"
+                py_dirs = list(lib_dir.glob("python3*"))
+                if py_dirs:
+                    site_pkgs = py_dirs[0] / "site-packages"
+                else:
+                    return
+            
+            if site_pkgs.exists() and str(site_pkgs) not in sys.path:
+                sys.path.insert(0, str(site_pkgs))
+    except Exception:
+        pass
+
+inject_nexus_env()
 
 class SecureMcpLibrary:
     """
@@ -197,6 +224,102 @@ class SecureMcpLibrary:
         self.conn.commit()
         print(f"✅ Indexed {count} files.")
 
+    def index_nexus_suite(self):
+        """
+        Phase 12: Decoupled Suite Synergy
+        Discover and index sibling tool data (Observer, Injector) from the shared Nexus root.
+        """
+        print("🔗 Nexus Suite Discovery initialized...")
+        
+        # 1. Locate Nexus Root
+        if sys.platform == "win32":
+            nexus_root = Path(os.environ['USERPROFILE']) / ".mcp-tools"
+        else:
+            nexus_root = Path.home() / ".mcp-tools"
+            
+        if not nexus_root.exists():
+            print("❌ Nexus root not found. Are the tools installed?")
+            return
+
+        # 2. Discover Observer Inventory
+        observer_inv = nexus_root / "mcp-server-manager" / "inventory.yaml"
+        if observer_inv.exists():
+            self._index_inventory(observer_inv)
+        else:
+            print("ℹ️  Observer inventory not initialized (fresh install detected).")
+
+        # 3. Discover Injector Config
+        injector_conf = nexus_root / "config.json"
+        if injector_conf.exists():
+            self._index_injector_config(injector_conf)
+        else:
+            print("⚠️  Injector config not found (global config.json).")
+            
+        print("✅ Suite indexing complete.")
+
+    def _index_inventory(self, path: Path):
+        """Parse Observer inventory.yaml and index servers."""
+        print(f"👁️  Indexing Observer Inventory: {path}")
+        try:
+            import yaml
+            data = yaml.safe_load(path.read_text(errors='ignore')) or {}
+            servers = data.get("servers", [])
+            for s in servers:
+                # Map to Knowledge Schema
+                name = s.get("name", "Unknown")
+                cmd = s.get("run", {}).get("start_cmd") or s.get("command", "n/a")
+                desc = s.get("notes", "") or f"MCP Server: {name}"
+                
+                # Create a pseudo-URL for the knowledge base
+                url = f"mcp://observer/server/{s.get('id', name)}"
+                
+                self.cursor.execute('''
+                    INSERT OR REPLACE INTO links 
+                    (url, title, domain, description, categories, is_active, hash, content) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    url,
+                    f"Server: {name}",
+                    "mcp-observer",
+                    desc,
+                    "suite_inventory,server",
+                    1,
+                    hashlib.sha256(str(s).encode()).hexdigest(),
+                    json.dumps(s, indent=2) # Store full metadata as content
+                ))
+            self.conn.commit()
+            print(f"   Indexed {len(servers)} servers from Observer.")
+        except Exception as e:
+            print(f"❌ Failed to index inventory: {e} (Need pyyaml?)")
+
+    def _index_injector_config(self, path: Path):
+        """Parse global config.json to find managed IDEs."""
+        print(f"💉 Indexing Injector Config: {path}")
+        try:
+            data = json.loads(path.read_text(errors='ignore'))
+            ide_paths = data.get("ide_config_paths", {})
+            
+            for ide, conf_path in ide_paths.items():
+                url = f"mcp://injector/ide/{ide}"
+                self.cursor.execute('''
+                    INSERT OR REPLACE INTO links 
+                    (url, title, domain, description, categories, is_active, hash, content) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    url,
+                    f"IDE Config: {ide.upper()}",
+                    "mcp-injector",
+                    f"Managed config file for {ide}",
+                    "suite_config,ide",
+                    1,
+                    hashlib.sha256(str(conf_path).encode()).hexdigest(),
+                    json.dumps({"ide": ide, "path": conf_path}, indent=2)
+                ))
+            self.conn.commit()
+            print(f"   Indexed {len(ide_paths)} managed IDEs.")
+        except Exception as e:
+            print(f"❌ Failed to index injector config: {e}")
+
 class FileIndexer:
     def __init__(self, root_path: str):
         self.root = Path(root_path).resolve()
@@ -214,11 +337,46 @@ class FileIndexer:
         return patterns
 
     def _should_ignore(self, path: Path):
-        import fnmatch
-        rel_path = path.relative_to(self.root)
-        for pattern in self.ignore_patterns:
-            if fnmatch.fnmatch(path.name, pattern) or fnmatch.fnmatch(str(rel_path), pattern):
+        """
+        Determine if a file should be ignored based on .gitignore patterns.
+        Tiered Reliability: Uses pathspec (Industrial mode) or Regex (Standard mode).
+        """
+        # 1. Permanent Tier: Try PathSpec
+        try:
+            from pathspec import PathSpec
+            from pathspec.patterns import GitWildMatchPattern
+            # Cache the spec for performance if needed, but for now we re-parse
+            spec = PathSpec.from_lines(GitWildMatchPattern, self.ignore_patterns)
+            if spec.match_file(str(path.relative_to(self.root))):
                 return True
+        except ImportError:
+            pass # Fallback to standard
+            
+        # 2. Standard Tier: Regex-based ignoring (Pure Python)
+        import fnmatch
+        rel_path = str(path.relative_to(self.root))
+        
+        # Internal hard-ignores
+        internal_ignores = [".git", "__pycache__", ".venv", "node_modules", ".DS_Store"]
+        if any(part in internal_ignores for part in path.parts):
+            return True
+
+        for pattern in self.ignore_patterns:
+            if not pattern or pattern.startswith("#"):
+                continue
+            
+            # Use regex for more accurate matching than fnmatch
+            # (Simplified gitignore->regex conversion)
+            regex = pattern.replace(".", "\\.").replace("*", ".*").replace("?", ".")
+            if pattern.startswith("/"):
+                regex = "^" + regex[1:]
+            
+            try:
+                if re.search(regex, rel_path) or fnmatch.fnmatch(path.name, pattern):
+                    return True
+            except:
+                continue
+                
         return False
 
     def scan(self):
@@ -346,6 +504,40 @@ class MCPServer:
                             },
                             "required": ["query"]
                         }
+                    }, {
+                        "name": "add_resource",
+                        "description": "Add a new resource (URL or file) to the Knowledge Base",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "url": {"type": "string", "description": "URL or file:// path to add"},
+                                "categories": {"type": "string", "description": "Comma-separated categories (e.g. 'docs,api')"}
+                            },
+                            "required": ["url"]
+                        }
+                    }, {
+                        "name": "update_resource",
+                        "description": "Update an existing resource",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "integer", "description": "Resource ID"},
+                                "url": {"type": "string", "description": "New URL (optional)"},
+                                "title": {"type": "string", "description": "New Title (optional)"},
+                                "active": {"type": "boolean", "description": "Set active state (optional)"}
+                            },
+                            "required": ["id"]
+                        }
+                    }, {
+                        "name": "delete_resource",
+                        "description": "Delete a resource by ID",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "integer", "description": "Resource ID to delete"}
+                            },
+                            "required": ["id"]
+                        }
                     }]
                 }
             elif method == "tools/call":
@@ -353,10 +545,16 @@ class MCPServer:
                 args = params.get("arguments", {})
                 if name == "search_knowledge_base":
                     query = args.get("query")
+                    # Searching title, url, description
                     matches = self.library.list_links(search=query)
                     text = "Found matches:\n"
-                    for m in matches:
-                        text += f"- {m[2]} ({m[1]})\n"
+                    if not matches:
+                        text += "No results found."
+                    else:
+                        for m in matches:
+                            # m = (id, url, title, domain, categories, is_active)
+                            domain_tag = f"[{m[3]}]" if m[3] else ""
+                            text += f"- {domain_tag} {m[2]} ({m[1]})\n"
                     
                     result = {
                         "content": [{
@@ -364,6 +562,48 @@ class MCPServer:
                             "text": text
                         }]
                     }
+                elif name == "add_resource":
+                    url = args.get("url")
+                    cats = args.get("categories", "").split(",") if args.get("categories") else None
+                    try:
+                        new_id = self.library.add_link(url, cats)
+                        result = {
+                            "content": [{"type": "text", "text": f"✅ Added resource ID: {new_id}"}]
+                        }
+                    except Exception as e:
+                        result = {
+                            "content": [{"type": "text", "text": f"❌ Failed: {e}"}],
+                            "isError": True
+                        }
+                elif name == "update_resource":
+                    rid = args.get("id")
+                    url = args.get("url")
+                    active = args.get("active")
+                    # Note: library.update_link doesn't support title update yet in SQL, 
+                    # but we'll wire up what we have.
+                    try:
+                        success = self.library.update_link(rid, url=url, active=active)
+                        msg = f"✅ Updated ID {rid}" if success else f"❌ ID {rid} not found"
+                        result = {
+                            "content": [{"type": "text", "text": msg}]
+                        }
+                    except Exception as e:
+                         result = {
+                            "content": [{"type": "text", "text": f"❌ Failed: {e}"}],
+                            "isError": True
+                        }
+                elif name == "delete_resource":
+                    rid = args.get("id")
+                    try:
+                        self.library.delete_link(rid)
+                        result = {
+                            "content": [{"type": "text", "text": f"🗑️ Deleted ID {rid}"}]
+                        }
+                    except Exception as e:
+                         result = {
+                            "content": [{"type": "text", "text": f"❌ Failed: {e}"}],
+                            "isError": True
+                        }
                 else:
                     raise ValueError(f"Unknown tool: {name}")
             elif method == "ping":
@@ -465,6 +705,7 @@ def main():
     parser.add_argument('--bootstrap', action='store_true', help="Bootstrap the Git-Packager workspace")
     parser.add_argument('--check', action='store_true', help="Check for sibling tool presence")
     parser.add_argument('--index', help="Index a local directory")
+    parser.add_argument('--index-suite', action='store_true', help="Index Nexus Suite (Observer/Injector) data")
     parser.add_argument('--server', action='store_true', help="Run in MCP Server mode")
     
     args = parser.parse_args()
@@ -475,6 +716,11 @@ def main():
     if args.server:
         server = MCPServer()
         server.run()
+        return
+
+    if args.index_suite:
+        library = SecureMcpLibrary()
+        library.index_nexus_suite()
         return
 
     if args.index:

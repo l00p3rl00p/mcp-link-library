@@ -1,79 +1,165 @@
-# MCP Link Library
+# MCP Workforce Nexus: The Activator
 
-A quick, flexible link library with CLI management.
+**The primary engine for deploying, hardening, and unifying MCP server environments with industrial-grade reliability.**
 
-## Features
+The **Activator** orchestrates the Workforce Nexus, transforming raw GitHub repositories into production-ready AI tools. It handles environment isolation, structural auditing, and atomic deployments.
 
-- Add links with automatic metadata extraction
-- Categorize links
-- Search and filter links
-- Activate/Deactivate links
-- Simple CLI interface
+---
 
-## Installation
+## ⚡ Quick Start: Standalone Activator
+
+Install a single repository as a portable MCP server immediately:
 
 ```bash
-pip install .
+python3 serverinstaller/install.py
 ```
+*Selection tip: Follow the prompts to detect Python/Node and generate an `install.sh` shim.*
 
-## Usage
+---
 
-### 🚀 Workforce Integration
-The Librarian is part of the Git-Packager suite.
+## 🚀 Package Start: The Workforce Nexus
+
+Deploy the entire hardened Nexus suite to `~/.mcp-tools` in one command:
+
 ```bash
-# Bootstrap the entire workforce suite
-mcp --bootstrap
+python3 bootstrap.py --gui
+```
+*Selection tip: Use `--gui` to auto-launch the dashboard after installation.*
 
-# Check presence of sibling tools (Surgeon, Observer, Activator)
-mcp --check
+---
+
+## 📋 Table of Contents
+1. [Nexus Architecture](#nexus-architecture)
+2. [Reliability Tier Comparison](#reliability-tier-comparison)
+3. [Core Capabilities](#core-capabilities)
+4. [Universal Safety & Rollback](#universal-safety--rollback)
+5. [Documentation (Low Density)](#documentation-low-density)
+
+---
+
+## 🔍 Nexus Architecture
+
+The Activator unifies all specialized tools into a single, hardened location.
+
+```mermaid
+graph LR
+    A["The Activator<br>(bootstrap.py)"] --> N["~/.mcp-tools/<br>(The Nexus)"]
+    N --> S["Surgeon<br>(mcp-injector)"]
+    N --> O["Observer<br>(mcp-server-manager)"]
+    N --> L["Librarian<br>(mcp-link-library)"]
 ```
 
-### Add a Link
+---
+
+## 📊 Reliability Tier Comparison
+
+All tiers include **Universal Safety (Pre-flight & Rollback)**.
+
+| Tier | Flag | Convergence Area | Strategy | Features |
+| :--- | :--- | :---: | :--- | :--- |
+| **Lite** | `--lite` | **Distributed** | Zero-Dep | Portable, Atomic Reversal, Auto-Chmod |
+| **Standard** | (Default) | **Linked** | Pure Python | Structural Audit, Regex Indexing, Symlinks |
+| **Industrial** | `--permanent` | **Unified** | Infrastructure | Managed Venv, `jsonschema`, `psutil`, `PyYAML` |
+
+---
+
+## 🌟 Core Capabilities
+
+*   **Atomic Transactions**: Multi-tool installation that reverts completely on failure.
+*   **Suite Synergy**: Detects sibling tools and triggers "Application Convergence" for a unified experience.
+*   **Intelligent Resolution**: Prompt/Recommend between multiple entry points (e.g., `.sh` vs `.py`).
+*   **Auto-Chmod Enforcement**: Automatically sets execute bits on all entry points and dependencies.
+*   **Pre-flight Intelligence**: Verifies disk health and permissions before execution.
+*   **Headless Mode**: Zero-touch replication for automated agents.
+
+---
+
+## 🔐 Universal Safety & Rollback
+
+Every operation follows a strict **Pre-flight -> Track -> Commit/Rollback** pattern.
+
+```mermaid
+flowchart LR
+    P[Pre-flight] --> T_Check[Track Bits]
+    T_Check --> Action[Install/Update]
+    Action -- Error --> R[Atomic Rollback]
+    Action -- Success --> C[Lock Manifest]
+```
+
+---
+
+## 📚 Documentation (Low Density Deep Dives)
+
+Detailed technical manuals for engineering reference:
+
+*   **[ARCHITECTURE.md](./ARCHITECTURE.md)**: Logic models, subsystems, and state machines.
+*   **[ENVIRONMENT.md](./ENVIRONMENT.md)**: Audit logic, OS-specific paths, and dependency rules.
+*   **[FEATURES.md](./FEATURES.md)**: Command matrix, resolve logic, and scorable feature logs.
+*   **[NEXUS_TECHNICAL_SPEC.md](./NEXUS_TECHNICAL_SPEC.md)**: Master reliability specification.
+
+
+
+## 🛠️ Workforce Nexus Command Reference
+
+| Tool | Shared Command | Direct Module Execution | Responsibility |
+| :--- | :--- | :--- | :--- |
+| **Activator** | `mcp-activator` | `python3 bootstrap.py` | Orchestration, Installation, Sync |
+| **Observer** | `mcp-observer` | `python3 -m mcp_inventory.cli` | UI/GUI, Health, Inventory |
+| **Surgeon** | `mcp-surgeon` | `python3 mcp_injector.py` | Injection, Config Hardening |
+| **Librarian** | `mcp-librarian` | `python3 mcp.py` | Knowledge SQLite, URL Persistence |
+
+---
+
+## 🖥️ GUI Management (The Observer Dashboard)
+
+The **Observer GUI** is your primary interface for monitoring the health and connection status of all Nexus components.
+
+*   **To Launch:**
+    ```bash
+    mcp-observer gui
+    # OR (Direct)
+    python3 -m mcp_inventory.cli gui
+    ```
+*   **Dashboard URL:** [http://localhost:8501](http://localhost:8501)
+*   **To Stop:**
+    - Press `Ctrl + C` in the terminal where the GUI is running.
+    - Closing the terminal session will also terminate the server.
+*   **To Restart:** Simply run the launch command again. The GUI will automatically re-index the current inventory.
+
+---
+
+## 🌍 Global Path & Workspace Context
+
+### 1. Setting the PATH
+For the `mcp-` commands to work from any directory, ensure your shell configuration (`~/.zshrc` or `~/.bashrc`) includes the Nexus bin directory:
+
 ```bash
-mcp --add https://docs.claude.com --categories development ai
+export PATH="$HOME/.mcp-tools/bin:$PATH"
 ```
+*(The Industrial/Standard bootstrap attempts to automate this step during installation.)*
 
-### List Links
-```bash
-# List all active links
-mcp --list
+### 2. Execution Directory
+*   **Installation/Sync:** Always run `bootstrap.py` from the `repo-mcp-packager` root.
+*   **Daily Use:** Once installed, all `mcp-` commands can be executed from **any directory** within your workspace.
 
-# List links in a specific category
-mcp --list --category development
+---
 
-# Search links
-mcp --list --search claude
-```
+# Application Convergence & Synergy
+The "Nexus Application" mode is triggered when the bootstrapper detects all four modules (mcp-injector, mcp-link-library, mcp-server-manager, repo-mcp-packager) in the same workspace.
 
-### Manage Links
-```bash
-# Delete a link by ID
-mcp --delete 3
+Convergence Matrix (Organization & Areas)
+Feature	Lite (Loose Binding)	Standard (Close Binding)	Industrial (Managed App)
+Philosophy	"Distributed & Portable"	"Cohesive & Linked"	"Monolithic & Hardened"
+Logic Area	Repos remain in workspace	~/.mcp-tools/suite (Symlinks)	~/.mcp-tools/app (Managed Mirror)
+Shared Base	~/.mcp-tools/lite/	~/.mcp-tools/standard/	~/.mcp-tools/industrial/
+Environment	OS-Default / Manual Venv	Per-module local venvs	Single Unified Hardened Venv
+Update Path	Manual per repo	Live (via Symlinks)	On-Demand (nexus-sync)
+Global Path	Optional (Local first)	Recommended	Mandatory Enforcement
 
-# Update a link
-mcp --update 4 --url https://newurl.com --categories tech
 
-# Deactivate/Activate a link
-mcp --deactivate 5
-mcp --activate 5
-```
+---
 
-## 🤝 Git-Packager Workforce Suite
-
-This tool is the **Librarian (Knowledge)** for the complete four-component workforce ecosystem:
-
-| Tool | Persona | Purpose |
-| --- | --- | --- |
-| **mcp-injector** | The Surgeon | Safely manage MCP server configs in IDE JSON files |
-| **mcp-server-manager** | The Observer | Discover, track, and monitor health of all MCP servers |
-| **repo-mcp-packager** | The Activator | Install, package, and update MCP servers with automation |
-| **mcp-link-library** | The Librarian | Curated knowledge base and document engine for AI tools |
-
-### Integrated Benefits
-* **Lifecycle Awareness**: Lifecycle updates in the Activator automatically refresh Librarian documents.
-* **Health Diagnostics**: The `verify.py` script allows the Observer to monitor document index health.
-* **Universal Search**: The Librarian provides the knowledge "fuel" for AI tools configured by the Surgeon.
-
-## License
-
-MIT License
+## 📝 Metadata
+*   **Status**: Production Ready / Hardened (Phase 9)
+*   **Author**: l00p3rl00p
+*   **Workflow**: Adheres to `@/fix-md-files-for-release`
