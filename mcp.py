@@ -691,7 +691,19 @@ def cmd_bootstrap():
         return 1
 
 def main():
-    parser = argparse.ArgumentParser(description="MCP Link Library - The Librarian")
+    parser = argparse.ArgumentParser(
+        description="MCP Link Library - The Librarian",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Commands (what they do):\n"
+            "  mcp-librarian --add <url>         Add a URL\n"
+            "  mcp-librarian --list              List active links\n"
+            "  mcp-librarian --search <query>    Search stored links\n"
+            "  mcp-librarian --index <dir>       Index a local directory\n"
+            "  mcp-librarian --index-suite       Index suite data (Observer/Injector)\n"
+            "  mcp-librarian --server            Run as stdio MCP server (injectable)\n"
+        ),
+    )
     parser.add_argument('--add', help="Add a new link")
     parser.add_argument('--categories', nargs='+', help="Categories for the link")
     parser.add_argument('--list', action='store_true', help="List active links")
