@@ -37,6 +37,7 @@ As a user, I want:
 ### 4. Universal Observability
 * **Visual Status**: The user can see the health and connection status of all Nexus components (Observer, Librarian, Injector, Activator) in a single dashboard.
 * **Graceful Degradation**: The system functions even if components are missing, clearly indicating what is available vs. what needs installation.
+* **Standalone Resilience**: The library functions as a standard MCP server even when isolated from the Nexus suite and missing optional dependencies (PDF/Excel support degradation).
 
 ### 5. Resilient Lifecycle
 * **Atomic Rollback**: If an installation fails at any step, the system automatically reverts to a clean state, leaving no partial artifacts.
