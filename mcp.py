@@ -40,6 +40,12 @@ import re
 import time
 
 try:
+    from atp_sandbox import ATPSandbox
+    atp_sb = ATPSandbox()
+except ImportError:
+    atp_sb = None
+
+try:
     from nexus_session_logger import NexusSessionLogger
     session_logger = NexusSessionLogger()
 except ImportError:
@@ -767,6 +773,27 @@ class MCPServer:
                             "properties": {},
                             "required": []
                         }
+                    }, {
+                        "name": "search_api",
+                        "description": "ATP Tool: Search for available tool signatures by intent or keyword. Prevents context bloat.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "Intent or keyword to search for"}
+                            },
+                            "required": ["query"]
+                        }
+                    }, {
+                        "name": "execute_code",
+                        "description": "ATP Tool: Execute Python code in a restricted sandbox for data processing (map/filter/reduce).",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "code": {"type": "string", "description": "Python code block to execute"},
+                                "context": {"type": "object", "description": "Optional data context for the code"}
+                            },
+                            "required": ["code"]
+                        }
                     }]
                 }
             elif method == "tools/call":
@@ -791,6 +818,29 @@ class MCPServer:
                             "text": text
                         }]
                     }
+                elif name == "search_api":
+                    query = args.get("query", "").lower()
+                    tools = self.handle_request({"method": "tools/list", "id": 0})["tools"]
+                    matches = [t for t in tools if query in t["name"].lower() or query in t["description"].lower()]
+                    result = {
+                        "content": [{"type": "text", "text": json.dumps(matches, indent=2)}]
+                    }
+                elif name == "execute_code":
+                    code = args.get("code", "")
+                    context = args.get("context", {})
+                    if not atp_sb:
+                         result = {"isError": True, "content": [{"type": "text", "text": "ATP Sandbox module missing."}]}
+                    else:
+                        exec_res = atp_sb.execute(code, context)
+                        if exec_res.get("success"):
+                            result = {
+                                "content": [{"type": "text", "text": json.dumps(exec_res["result"], indent=2)}]
+                            }
+                        else:
+                            result = {
+                                "isError": True,
+                                "content": [{"type": "text", "text": f"Sandbox Error: {exec_res.get('error')}"}]
+                            }
                 elif name == "add_resource":
                     url = args.get("url")
                     cats = args.get("categories", "").split(",") if args.get("categories") else None
@@ -1028,6 +1078,7 @@ def main():
     parser.add_argument('--index-suite', action='store_true', help="Index Nexus Suite (Observer/Injector) data")
     parser.add_argument('--server', action='store_true', help="Run in MCP Server mode")
     parser.add_argument('--watch', action='store_true', help="Start real-time directory watcher")
+    parser.add_argument('--json', action='store_true', help="Output in raw JSON format for agent-side processing")
     
     args = parser.parse_args()
     
@@ -1083,6 +1134,9 @@ def main():
             
     elif args.list:
         links = library.list_links(category=args.category, search=args.search)
+        if args.json:
+            print(json.dumps([{"id": l[0], "url": l[1], "title": l[2], "domain": l[3], "categories": l[4], "active": l[5]} for l in links]))
+            return
         if not links:
             print("No links found.")
         else:

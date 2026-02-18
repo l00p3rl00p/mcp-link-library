@@ -45,9 +45,33 @@ class NexusSessionLogger:
         """Log agent's internal reasoning posture."""
         self.log("THINKING", state, suggestion=reason)
 
-    def log_command(self, cmd: str, status: str, result: Optional[str] = None):
-        """Log a system command execution."""
-        self.log("COMMAND", f"Executed: {cmd}", suggestion=f"Status: {status}", metadata={"raw_result": result})
+    def estimate_tokens(self, text: str) -> int:
+        """Heuristic token estimation (len / 4)."""
+        if not text:
+            return 0
+        return len(str(text)) // 4
+
+    def log_command(self, cmd: str, status: str, result: Optional[str] = None, tokens: Optional[Dict[str, int]] = None):
+        """
+        Log a system command execution.
+        :param tokens: Optional dict with 'input', 'output', 'total' keys.
+        """
+        meta = {"raw_result": result}
+        
+        # Calculate or use provided tokens
+        if tokens:
+            meta["tokens"] = tokens
+        else:
+            # Auto-estimate
+            t_in = self.estimate_tokens(cmd)
+            t_out = self.estimate_tokens(result)
+            meta["tokens"] = {
+                "input": t_in,
+                "output": t_out,
+                "total": t_in + t_out
+            }
+
+        self.log("COMMAND", f"Executed: {cmd}", suggestion=f"Status: {status}", metadata=meta)
 
 if __name__ == "__main__":
     # Test execution
