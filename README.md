@@ -4,6 +4,19 @@
 
 The **Librarian** (`mcp.py`) is a specialized MCP server responsible for indexing, storing, and retrieving knowledge from heterogeneous sources. It provides agents with "Deep Search" capabilities, allowing them to find needles in haystacks across file formats.
 
+## 🚀 Quick Start (Standalone)
+
+If you just want to start the Librarian:
+```bash
+# Launch as an MCP Server
+python3 mcp.py --server
+
+# Add a URL or File to memory
+python3 mcp.py --add "https://example.com"
+```
+
+> **Part of the Workforce Nexus Suite**: For full orchestration and the visual dashboard, see the [Master README](../README.md).
+
 ---
 
 ## 🌟 Core Capabilities

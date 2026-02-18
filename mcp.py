@@ -23,12 +23,27 @@ try:
     from PIL.ExifTags import TAGS
 except ImportError:
     Image = None
+try:
+    from watchdog.observers import Observer
+    from watchdog.observers.polling import PollingObserver
+    from watchdog.events import FileSystemEventHandler
+except ImportError:
+    Observer = None
+    PollingObserver = None
+    FileSystemEventHandler = None
 import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import datetime
 import os
 import re
+import time
+
+try:
+    from nexus_session_logger import NexusSessionLogger
+    session_logger = NexusSessionLogger()
+except ImportError:
+    session_logger = None
 
 # Nexus Support: Try to load high-confidence libraries from the central venv
 def inject_nexus_env():
@@ -74,7 +89,7 @@ class SecureMcpLibrary:
             self.app_dir.mkdir(parents=True, exist_ok=True)
             db_path = str(self.app_dir / "knowledge.db")
         
-        self.conn = sqlite3.connect(db_path)
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self._create_secure_tables()
     
@@ -92,6 +107,13 @@ class SecureMcpLibrary:
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 hash TEXT,
                 content TEXT
+            )
+        ''')
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS scan_roots (
+                id INTEGER PRIMARY KEY,
+                path TEXT UNIQUE NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         self.conn.commit()
@@ -486,12 +508,75 @@ class FileIndexer:
                 except Exception as e:
                     print(f"⚠️  Skipping {path.name}: {e}")
 
+if FileSystemEventHandler is None:
+    class FileSystemEventHandler:
+        pass
+
+class NexusWatcher(FileSystemEventHandler):
+    """
+    Real-time file observer for the Librarian.
+    Re-indexes files when they are modified or created.
+    """
+    def __init__(self, library: SecureMcpLibrary, paths: List[str]):
+        self.library = library
+        self.paths = paths
+        self.observer = None
+
+    def on_modified(self, event):
+        if not event.is_directory:
+            self._handle_change(event.src_path)
+
+    def on_created(self, event):
+        if not event.is_directory:
+            print(f"DEBUG: Watcher detected creation of {event.src_path}", file=sys.stderr)
+            self._handle_change(event.src_path)
+
+    def _handle_change(self, path_str: str):
+        path = Path(path_str)
+        # Skip hidden files and common noise
+        if any(part.startswith('.') for part in path.parts):
+            return
+        
+        # Log to file since stdout is redirected in MCP mode
+        self.library.cursor.execute("INSERT INTO links (url, title, domain, categories, content) VALUES (?, ?, ?, ?, ?)", 
+                                   (f"log://watcher/{time.time()}", "Watcher Event", "system", "debug", f"Detected: {path.name}"))
+        self.library.conn.commit()
+        
+        print(f"🔄 Change detected: {path.name}. Re-indexing...", file=sys.stderr)
+        # Add or update in DB
+        try:
+            self.library.add_link(f"file://{path_str}", categories=['auto-indexed'])
+        except Exception as e:
+            print(f"❌ Auto-index failed for {path.name}: {e}", file=sys.stderr)
+
+    def start(self):
+        if not PollingObserver:
+            print("❌ Watchdog not installed. Cannot start watcher.", file=sys.stderr)
+            return False
+            
+        self.observer = PollingObserver()
+        for p in self.paths:
+            path_obj = Path(p).resolve()
+            if path_obj.exists():
+                self.observer.schedule(self, str(path_obj), recursive=True)
+                print(f"👁️  Watching: {path_obj}", file=sys.stderr)
+        
+        self.observer.start()
+        return True
+
+    def stop(self):
+        if self.observer:
+            self.observer.stop()
+            self.observer.join()
+
 class MCPServer:
     def __init__(self):
         self.library = SecureMcpLibrary()
         log_dir = self.library.app_dir / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = log_dir / "librarian_errors.log"
+        self.watcher = None
+
         
     def log_error(self, msg: str):
         """Log critical errors to file so they aren't lost in stdio redirection."""
@@ -660,6 +745,28 @@ class MCPServer:
                             },
                             "required": ["packages"]
                         }
+                    }, {
+                        "name": "start_watcher",
+                        "description": "Start a real-time file watcher for specific directories",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "paths": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "List of directories to watch"
+                                }
+                            },
+                            "required": ["paths"]
+                        }
+                    }, {
+                        "name": "get_watcher_logs",
+                        "description": "Retrieve internal debug logs from the file watcher",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        }
                     }]
                 }
             elif method == "tools/call":
@@ -756,6 +863,30 @@ class MCPServer:
                             "content": [{"type": "text", "text": f"❌ Install failed: {e}"}],
                             "isError": True
                         }
+                elif name == "start_watcher":
+                    if self.watcher:
+                        self.watcher.stop()
+                    
+                    paths = args.get("paths", [])
+                    self.watcher = NexusWatcher(self.library, paths)
+                    success = self.watcher.start()
+                    
+                    if success:
+                        result = {
+                            "content": [{"type": "text", "text": f"👁️  Watcher started for: {', '.join(paths)}"}]
+                        }
+                    else:
+                        result = {
+                            "content": [{"type": "text", "text": "❌ Failed to start watcher (Check logs for details)"}],
+                            "isError": True
+                        }
+                elif name == "get_watcher_logs":
+                    self.library.cursor.execute("SELECT content FROM links WHERE categories = 'debug' ORDER BY id DESC LIMIT 10")
+                    rows = self.library.cursor.fetchall()
+                    text = "Recent Watcher Events:\n" + ("\n".join([r[0] for r in rows]) if rows else "No events recorded.")
+                    result = {
+                        "content": [{"type": "text", "text": text}]
+                    }
                 else:
                     raise ValueError(f"Unknown tool: {name}")
             elif method == "ping":
@@ -779,8 +910,13 @@ class MCPServer:
             }
             if error:
                 response["error"] = error
+                if session_logger and method == "tools/call":
+                    session_logger.log_command(params.get("name", "unknown"), "ERROR", result=error.get("message"))
             else:
                 response["result"] = result
+                if session_logger and method == "tools/call":
+                    res_text = json.dumps(result)[:200] + "..." if result else "None"
+                    session_logger.log_command(params.get("name", "unknown"), "SUCCESS", result=res_text)
             return response
         
         return None
@@ -891,6 +1027,7 @@ def main():
     parser.add_argument('--index', help="Index a local directory")
     parser.add_argument('--index-suite', action='store_true', help="Index Nexus Suite (Observer/Injector) data")
     parser.add_argument('--server', action='store_true', help="Run in MCP Server mode")
+    parser.add_argument('--watch', action='store_true', help="Start real-time directory watcher")
     
     args = parser.parse_args()
     
@@ -900,6 +1037,25 @@ def main():
     if args.server:
         server = MCPServer()
         server.run()
+        return
+
+    if args.watch:
+        library = SecureMcpLibrary()
+        # Fetch roots from DB
+        rows = library.cursor.execute("SELECT path FROM scan_roots").fetchall()
+        paths = [r[0] for r in rows]
+        if not paths:
+            print("❌ No scan roots registered in DB. Add one using --index first or via the GUI/Observer.")
+            return
+        
+        watcher = NexusWatcher(library, paths)
+        if watcher.start():
+            print(f"🚀 Librarian Watcher started on {len(paths)} paths. Press Ctrl+C to stop.")
+            try:
+                while True: time.sleep(1)
+            except KeyboardInterrupt:
+                watcher.stop()
+                print("🛑 Watcher stopped.")
         return
 
     if args.index_suite:
