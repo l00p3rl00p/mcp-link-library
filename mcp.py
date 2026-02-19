@@ -38,6 +38,7 @@ import datetime
 import os
 import re
 import time
+import shlex
 
 try:
     from atp_sandbox import ATPSandbox
@@ -258,6 +259,59 @@ class SecureMcpLibrary:
         """Permanently delete a link."""
         self.cursor.execute("DELETE FROM links WHERE id = ?", (link_id,))
         self.conn.commit()
+        return True
+
+    def open_resource(self, link_id: int):
+        """Open a resource using the OS default handler."""
+        self.cursor.execute("SELECT url FROM links WHERE id = ?", (link_id,))
+        row = self.cursor.fetchone()
+        if not row:
+            raise ValueError(f"Resource {link_id} not found")
+        
+        url = row[0]
+        import subprocess
+        
+        if url.startswith("file://"):
+            path = url.replace("file://", "")
+            if sys.platform == "darwin":
+                subprocess.run(["open", path])
+            elif sys.platform == "win32":
+                os.startfile(path)
+            else:
+                subprocess.run(["xdg-open", path])
+        elif url.startswith("mcp://"):
+            # Internal protocols might not be openable directly by OS
+            return False
+        else:
+            # Standard URL
+            if sys.platform == "darwin":
+                subprocess.run(["open", url])
+            elif sys.platform == "win32":
+                os.startfile(url)
+            else:
+                subprocess.run(["xdg-open", url])
+        return True
+
+    def edit_resource(self, link_id: int):
+        """Open a file resource in the default editor."""
+        self.cursor.execute("SELECT url FROM links WHERE id = ?", (link_id,))
+        row = self.cursor.fetchone()
+        if not row:
+            raise ValueError(f"Resource {link_id} not found")
+        
+        url = row[0]
+        if not url.startswith("file://"):
+            return False # Can't edit remote URLs or pseudo-protocols
+            
+        path = url.replace("file://", "")
+        import subprocess
+        
+        editor = os.environ.get("EDITOR", "open -e" if sys.platform == "darwin" else "notepad" if sys.platform == "win32" else "vi")
+        
+        if sys.platform == "darwin" and editor == "open -e":
+            subprocess.run(["open", "-e", path])
+        else:
+            subprocess.run(shlex.split(editor) + [path])
         return True
 
     def _validate_url(self, url: str):
@@ -1172,6 +1226,8 @@ def main():
     parser.add_argument('--category', help="Filter listing by category")
     parser.add_argument('--search', help="Search links")
     parser.add_argument('--delete', type=int, help="Delete link by ID")
+    parser.add_argument('--open', type=int, help="Open resource by ID using OS default")
+    parser.add_argument('--edit', type=int, help="Edit resource by ID using default editor")
     parser.add_argument('--update', type=int, help="Update link ID (requires --url or --categories)")
     parser.add_argument('--url', help="New URL for update")
     parser.add_argument('--activate', type=int, help="Activate link by ID")
@@ -1261,6 +1317,18 @@ def main():
     elif args.delete:
         library.delete_link(args.delete)
         print(f"🗑 Deleted link {args.delete}")
+
+    elif args.open:
+        if library.open_resource(args.open):
+            print(f"🚀 Opened resource {args.open}")
+        else:
+            print(f"❌ Could not open resource {args.open}")
+
+    elif args.edit:
+        if library.edit_resource(args.edit):
+            print(f"📝 Opened {args.edit} for editing")
+        else:
+            print(f"❌ Resource {args.edit} is not an editable local file.")
         
     elif args.update:
         if library.update_link(args.update, url=args.url, categories=args.categories):
