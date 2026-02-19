@@ -39,6 +39,7 @@ import os
 import re
 import time
 import shlex
+__version__ = "3.3.0"
 
 try:
     from atp_sandbox import ATPSandbox
@@ -147,7 +148,7 @@ class SecureMcpLibrary:
                                  text.append(page.extract_text())
                              content = "\n".join(text)
                          except Exception as e:
-                             print(f"⚠️  PDF extraction failed for {path}: {e}")
+                             print(f"⚠️  PDF extraction failed for {path}: {e}", file=sys.stderr)
                              content = None
                      elif path.suffix.lower() == '.xlsx' and openpyxl:
                          try:
@@ -162,14 +163,14 @@ class SecureMcpLibrary:
                                         text.append(row_text)
                             content = "\n".join(text)
                          except Exception as e:
-                            print(f"⚠️  Excel extraction failed for {path}: {e}")
+                            print(f"⚠️  Excel extraction failed for {path}: {e}", file=sys.stderr)
                             content = None
                      elif path.suffix.lower() == '.docx' and docx:
                          try:
                              doc = docx.Document(path)
                              content = "\n".join([p.text for p in doc.paragraphs])
                          except Exception as e:
-                             print(f"⚠️  Word extraction failed for {path}: {e}")
+                             print(f"⚠️  Word extraction failed for {path}: {e}", file=sys.stderr)
                              content = None
                      elif path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp'] and Image:
                          try:
@@ -188,7 +189,7 @@ class SecureMcpLibrary:
                                      meta.append(f"EXIF: {str(exif)}")
                                  content = "\n".join(meta)
                          except Exception as e:
-                             print(f"⚠️  Image extraction failed for {path}: {e}")
+                             print(f"⚠️  Image extraction failed for {path}: {e}", file=sys.stderr)
                              content = None
                      else:
                         # Text Handling
@@ -1142,9 +1143,14 @@ class MCPServer:
         if uri.startswith("file://"):
             try:
                 path = Path(uri.replace("file://", "")).resolve()
-                # SECURITY: Allow reading if file exists and is absolute path
-                # Ideally we check if it's in an allowed directory, but for this user test we allow specific paths
-                if path.exists():
+                # SECURITY: Allow reading if file exists and is within a recognized Nexus workspace
+                allowed_roots = [
+                    self.library.app_dir.parent, # ~/.mcp-tools
+                    Path("/Users/almowplay/Developer/Github") # Active developer root
+                ]
+                is_allowed = any(str(path).startswith(str(root)) for root in allowed_roots)
+                
+                if path.exists() and is_allowed:
                      # Binary check: try reading as text, if fails return base64 or msg
                      try:
                          return path.read_text(errors='ignore')
