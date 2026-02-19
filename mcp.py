@@ -436,6 +436,76 @@ class SecureMcpLibrary:
         except Exception as e:
             print(f"❌ Failed to index injector config: {e}")
 
+    def prepopulate_docs(self, path: str):
+        """Generates standardized ARCHITECTURE.md and README.md for a folder."""
+        target = Path(path).resolve()
+        if not target.exists():
+            return False
+        
+        name = target.name
+        
+        # README.md Template
+        readme_content = f"""# {name} (Nexus Forged)
+
+## Overview
+This MCP server was automatically forged by the Workforce Nexus. It implements standard Deterministic Wrapping and ATP Hardening.
+
+## Capabilities
+- **Deterministic API**: Wrapped with `mcp_wrapper.py`.
+- **ATP Sandbox**: Hardened with `atp_sandbox.py`.
+
+## Usage
+Run with `python3 mcp_server.py`.
+"""
+        # ARCHITECTURE.md Template
+        arch_content = f"""# Architecture: {name}
+
+## Components
+1. **Entry Point**: `mcp_server.py`
+2. **Logic Layer**: Wrapped tools accessible via MCP.
+3. **Security Model**: ATP Sandbox enforces logic-only execution.
+
+## Data Flow
+Input -> mcp_wrapper -> [Tool Logic] -> sandbox_verify -> Output
+"""
+        # ATP_COMPLIANCE_GUIDE.md Template (The Portability Mandate)
+        compliance_content = f"""# ATP Compliance Guide: {name}
+
+## 🏛 The Portability Mandate (v3.0)
+This MCP server is a self-contained "Logic Colony." It carries its own security runtime and documentation spec so that any subsequent AI agent can operate it with high-fidelity.
+
+## 🧪 The "Strawberry" Logic Test
+To verify compliance, run:
+```python
+result = "strawberry".count("r")
+```
+Required Outcome: `3` (Verified via `atp_sandbox.py`)
+
+## 🔧 Component Specification
+1. **mcp_wrapper.py**: Deterministic API adapter (13-point standard).
+2. **atp_sandbox.py**: Isolated Logic Jail (Whitelist-only).
+
+### Standard 3.0 Specs:
+- **1-3**: HTTP/POST/GET with custom header & auth support.
+- **4-5**: Strict Input/Output contracts (Status, Data, Error, Elapsed).
+- **6-7**: Stream aggregation and deterministic retry policies.
+- **8-10**: 1MB safety guards, safe-schemes (no file://), and observability hooks.
+- **11-13**: Token projection (dot-path), schema validation, and tier annotation.
+"""
+        (target / "README.md").write_text(readme_content)
+        (target / "ARCHITECTURE.md").write_text(arch_content)
+        (target / "ATP_COMPLIANCE_GUIDE.md").write_text(compliance_content)
+        return True
+
+    def link_categories(self, server_id: str, tags: List[str]):
+        """Associates resource tags with a server logic ID in the DB."""
+        # For now, we store this in the 'categories' field of the server entry in the links table
+        # We find the observer server link and update it
+        url = f"mcp://observer/server/{server_id}"
+        self.cursor.execute("UPDATE links SET categories = categories || ? WHERE url = ?", ("," + ",".join(tags), url))
+        self.conn.commit()
+        return True
+
 class FileIndexer:
     def __init__(self, root_path: str):
         self.root = Path(root_path).resolve()
@@ -794,6 +864,27 @@ class MCPServer:
                             },
                             "required": ["code"]
                         }
+                    }, {
+                        "name": "prepopulate_docs",
+                        "description": "Generate standard ARCHITECTURE.md and README.md for a directory",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string", "description": "Absolute path to the directory"}
+                            },
+                            "required": ["path"]
+                        }
+                    }, {
+                        "name": "link_categories",
+                        "description": "Associate tags/categories with a forged server",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "server_id": {"type": "string", "description": "ID of the server"},
+                                "tags": {"type": "array", "items": {"type": "string"}, "description": "List of tags"}
+                            },
+                            "required": ["server_id", "tags"]
+                        }
                     }]
                 }
             elif method == "tools/call":
@@ -937,6 +1028,19 @@ class MCPServer:
                     result = {
                         "content": [{"type": "text", "text": text}]
                     }
+                elif name == "prepopulate_docs":
+                    path = args.get("path")
+                    success = self.library.prepopulate_docs(path)
+                    result = {
+                        "content": [{"type": "text", "text": f"{'✅' if success else '❌'} Documentation prepopulated at {path}"}]
+                    }
+                elif name == "link_categories":
+                    sid = args.get("server_id")
+                    tags = args.get("tags", [])
+                    self.library.link_categories(sid, tags)
+                    result = {
+                        "content": [{"type": "text", "text": f"✅ Linked {len(tags)} tags to {sid}"}]
+                    }
                 else:
                     raise ValueError(f"Unknown tool: {name}")
             elif method == "ping":
@@ -1078,12 +1182,21 @@ def main():
     parser.add_argument('--index-suite', action='store_true', help="Index Nexus Suite (Observer/Injector) data")
     parser.add_argument('--server', action='store_true', help="Run in MCP Server mode")
     parser.add_argument('--watch', action='store_true', help="Start real-time directory watcher")
+    parser.add_argument('--prepopulate-docs', help="Prepopulate docs for a directory")
     parser.add_argument('--json', action='store_true', help="Output in raw JSON format for agent-side processing")
     
     args = parser.parse_args()
     
     if args.bootstrap:
         sys.exit(cmd_bootstrap())
+
+    if args.prepopulate_docs:
+        library = SecureMcpLibrary()
+        if library.prepopulate_docs(args.prepopulate_docs):
+            print(f"✅ Prepopulated documentation at {args.prepopulate_docs}")
+        else:
+            print(f"❌ Failed to prepopulate docs at {args.prepopulate_docs}")
+        return
 
     if args.server:
         server = MCPServer()
