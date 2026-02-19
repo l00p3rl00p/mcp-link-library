@@ -1,6 +1,9 @@
 # Changelog - MCP Librarian (mcp-link-library)
 
-## [3.2.0] - 2026-02-19
+## [3.2.1] - 2026-02-19
+
+### Improvements
+- **Suite Sync**: Version alignment with Nexus v3.2.1.
 
 ### Security
 - `ATPSandbox`: Blocked `type()` and `getattr()` class-escape vectors at AST level. Regression baseline: 9 attack vectors confirmed blocked.
@@ -31,4 +34,4 @@
 - Cross-repo utility foundation.
 
 ---
-*Status: Production Ready (v2.0.0)*
+*Status: Production Ready (v3.2.1)*
