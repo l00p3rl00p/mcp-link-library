@@ -1,5 +1,15 @@
 # Changelog - MCP Librarian (mcp-link-library)
 
+## [3.2.0] - 2026-02-19
+
+### Security
+- `ATPSandbox`: Blocked `type()` and `getattr()` class-escape vectors at AST level. Regression baseline: 9 attack vectors confirmed blocked.
+
+### Fixes
+- `verify_universal_files.py`: Added `--skip-live` flag + `communicate(timeout=5)` — prevents indefinite hang in CI.
+
+---
+
 ## [2.0.0] - 2026-02-18
 
 ### 🚨 Major Security & Logic (ATP)
