@@ -50,11 +50,18 @@ class ATPSandbox:
             class ATPSecurityVisitor(ast.NodeVisitor):
                 def __init__(self):
                     self.errors = []
-                    self.forbidden_names = {'import', 'eval', 'exec', 'open', 'globals', 'locals', 'input'}
+                    # Expanded forbidden set — blocks class-escape vectors
+                    self.forbidden_names = {
+                        'import', 'eval', 'exec', 'open', 'globals',
+                        'locals', 'input', 'getattr', 'setattr', 'delattr',
+                        'vars', 'dir', 'compile', 'breakpoint',
+                    }
+                    # Forbidden callable names (blocks type() class escape)
+                    self.forbidden_calls = {'type', 'getattr', 'setattr', 'vars', 'dir', 'compile'}
 
                 def visit_Import(self, node):
                     self.errors.append("Security Violation: 'import' is forbidden.")
-                
+
                 def visit_ImportFrom(self, node):
                     self.errors.append("Security Violation: 'from ... import' is forbidden.")
 
@@ -67,11 +74,13 @@ class ATPSandbox:
 
                 def visit_Attribute(self, node):
                     if node.attr.startswith('__'):
-                        self.errors.append(f"Security Violation: path access to '{node.attr}' is forbidden.")
+                        self.errors.append(f"Security Violation: dunder attribute '{node.attr}' is forbidden.")
                     self.generic_visit(node)
 
                 def visit_Call(self, node):
-                    # Special check for shadowed or obfuscated calls if possible
+                    # Block dangerous built-in calls that enable class-hierarchy escape
+                    if isinstance(node.func, ast.Name) and node.func.id in self.forbidden_calls:
+                        self.errors.append(f"Security Violation: call to '{node.func.id}()' is forbidden.")
                     self.generic_visit(node)
 
             visitor = ATPSecurityVisitor()
