@@ -87,14 +87,33 @@ class SecureMcpLibrary:
     
     app_dir: Path
 
-    def __init__(self, db_path: str = None):
-        # Use a standard location in ~/.mcp-tools/mcp-server-manager or local
-        if db_path is None:
-            if sys.platform == "win32":
-                self.app_dir = Path(os.environ['USERPROFILE']) / ".mcp-tools" / "mcp-server-manager"
-            else:
-                self.app_dir = Path.home() / ".mcp-tools" / "mcp-server-manager"
+    def __init__(self, db_path: str = None, *, allow_http: bool = False):
+        # Use a standard location in ~/.mcp-tools/mcp-server-manager (or override).
+        self.allow_http = bool(allow_http)
+
+        override_home = os.environ.get("NEXUS_LIBRARIAN_HOME") or os.environ.get("NEXUS_APP_HOME")
+        if override_home:
+            self.app_dir = Path(override_home).expanduser().resolve()
+        elif sys.platform == "win32":
+            self.app_dir = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".mcp-tools" / "mcp-server-manager"
+        else:
+            self.app_dir = Path.home() / ".mcp-tools" / "mcp-server-manager"
+
+        # If a specific db_path is provided, still keep an app_dir for logs/artifacts.
+        if db_path == ":memory:":
+            try:
+                import tempfile as _tempfile
+
+                self.app_dir = Path(_tempfile.gettempdir()) / "mcp-link-library"
+            except Exception:
+                pass
+        try:
             self.app_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            # Last resort: fall back to current working directory.
+            self.app_dir = Path.cwd()
+
+        if db_path is None:
             db_path = str(self.app_dir / "knowledge.db")
         
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
@@ -322,6 +341,10 @@ class SecureMcpLibrary:
         """
         if not url.startswith(('http://', 'https://', 'file://')):
             url = 'https://' + url
+        if url.startswith("http://") and not self.allow_http:
+            raise ValueError(
+                f"Insecure URL scheme blocked: {url}. Use https:// or pass --allow-http if you really need plain HTTP."
+            )
         parsed = urlparse(url)
         
         # Files can have empty netloc (file:///path), HTTP must have domain
@@ -702,7 +725,13 @@ class NexusWatcher(FileSystemEventHandler):
 
 class MCPServer:
     def __init__(self):
-        self.library = SecureMcpLibrary()
+        # Prefer the canonical on-disk DB, but fall back to :memory: in restricted
+        # environments (CI/sandbox) where the default home directory may be read-only.
+        try:
+            self.library = SecureMcpLibrary()
+        except sqlite3.OperationalError as e:
+            print(f"WARNING: Librarian DB unavailable ({e}); using in-memory DB.", file=sys.stderr)
+            self.library = SecureMcpLibrary(":memory:")
         log_dir = self.library.app_dir / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = log_dir / "librarian_errors.log"
@@ -1246,6 +1275,7 @@ def main():
     parser.add_argument('--watch', action='store_true', help="Start real-time directory watcher")
     parser.add_argument('--prepopulate-docs', help="Prepopulate docs for a directory")
     parser.add_argument('--json', action='store_true', help="Output in raw JSON format for agent-side processing")
+    parser.add_argument('--allow-http', action='store_true', help="Allow adding http:// URLs (NOT recommended).")
     
     args = parser.parse_args()
     
@@ -1253,7 +1283,7 @@ def main():
         sys.exit(cmd_bootstrap())
 
     if args.prepopulate_docs:
-        library = SecureMcpLibrary()
+        library = SecureMcpLibrary(allow_http=bool(args.allow_http))
         if library.prepopulate_docs(args.prepopulate_docs):
             print(f"✅ Prepopulated documentation at {args.prepopulate_docs}")
         else:
@@ -1266,7 +1296,7 @@ def main():
         return
 
     if args.watch:
-        library = SecureMcpLibrary()
+        library = SecureMcpLibrary(allow_http=bool(args.allow_http))
         # Fetch roots from DB
         rows = library.cursor.execute("SELECT path FROM scan_roots").fetchall()
         paths = [r[0] for r in rows]
@@ -1285,12 +1315,12 @@ def main():
         return
 
     if args.index_suite:
-        library = SecureMcpLibrary()
+        library = SecureMcpLibrary(allow_http=bool(args.allow_http))
         library.index_nexus_suite()
         return
 
     if args.index:
-        library = SecureMcpLibrary()
+        library = SecureMcpLibrary(allow_http=bool(args.allow_http))
         library.index_directory(args.index)
         return
 
@@ -1298,7 +1328,7 @@ def main():
         check_suite()
         return
         
-    library = SecureMcpLibrary()
+    library = SecureMcpLibrary(allow_http=bool(args.allow_http))
     
     if args.add:
         try:
