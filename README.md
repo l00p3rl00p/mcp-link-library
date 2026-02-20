@@ -2,7 +2,7 @@
 
 **The Universal Search & Retrieval Engine for the Workforce Nexus.**
 
-The **Librarian** (`mcp.py`) is a specialized MCP server responsible for indexing, storing, and retrieving knowledge from heterogeneous sources. In v3.2.1, it includes the **ATP Sandbox** for secure execution of agent-driven logic.
+The **Librarian** (`mcp.py`) is a specialized MCP server responsible for indexing, storing, and retrieving knowledge from heterogeneous sources. In v3.3.1, it includes the **ATP Sandbox** for secure execution of agent-driven logic.
 
 ## 🚀 Quick Start (Suite Mode)
 
@@ -18,7 +18,7 @@ python3 mcp.py --server
 
 ---
 
-## 🌟 Capabilities (v3.2.1)
+## 🌟 Capabilities (v3.3.1)
 
 ### 1. Universal Indexing (v3.0)
 Deep content parsing for Documents (`PDF`, `DOCX`, `XLSX`) and Images (`EXIF`).
@@ -50,6 +50,6 @@ Includes the `ATPSandbox` layer to protect the host environment:
 ---
 
 ## 📝 Metadata
-* **Status**: Production Ready (v3.2.1)
+* **Status**: Production Ready (v3.3.1)
 * **Author**: l00p3rl00p
 * **Part of**: The Workforce Nexus Suite

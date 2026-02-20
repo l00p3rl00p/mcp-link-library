@@ -48,3 +48,12 @@
 - [x] "Start" button triggers actual backend process (pid created).
 - [x] Librarian tab shows indexed artifacts (or empty state if none, but *connected*).
 - [x] Command Log updates in real-time.
+
+---
+
+## Doctor (Must Run)
+
+This build’s Doctor is executed from the project root to validate the Librarian server surfaces:
+
+- `python3 /Users/almowplay/Developer/Github/mcp-creater-manager/verify_project_atp.py`
+- `node /Users/almowplay/Developer/Github/mcp-creater-manager/verify_links.js`
