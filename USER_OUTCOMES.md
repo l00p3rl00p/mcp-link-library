@@ -1,20 +1,23 @@
-# User Outcomes - Git Repo MCP Converter & Installer
+# User Outcomes - Nexus Librarian (mcp-link-library)
 
-This document defines what success looks like for the "Clean Room Installer" and ensures the technical path aligns with the mission of friction-less replication.
+This document defines success for the **Nexus Librarian**, the component responsible for knowledge persistence, RAG (Retrieval-Augmented Generation), and deep resource linking.
 
 ---
 
-## 🔗 Canonical Outcomes (Project Scope)
+## 🔗 Canonical Outcomes & Mission (Project Scope)
 
-This repo-level `USER_OUTCOMES.md` is subordinate to the canonical, project-wide outcomes:
+This repo-level `USER_OUTCOMES.md` is subordinate to the canonical [Workforce Nexus Mission Statement](/Users/almowplay/Developer/Github/mcp-creater-manager/USER_OUTCOMES.md).
 
-* `/Users/almowplay/Developer/Github/mcp-creater-manager/USER_OUTCOMES.md`
-* `/Users/almowplay/Developer/Github/mcp-creater-manager/EVIDENCE.md`
+## Core Mission Statement - READ ONLY- NEVER EDIT
 
-If there is drift between this file and the canonical outcomes/evidence, treat this file as informational only and update it to match the canonical sources.
+The mission is to empower users and agents with a persistent, searchable 'Source of Truth' for all project-related knowledge. By indexing files, URLs, and repositories into an ATP-hardened, token-optimized library, it enables industrial-speed retrieval and zero-friction resource linking, ensuring the ecosystem's memory is always accessible and secure.
 
-## ⚡ Quick Summary
-* **Mission Statement**: To provide a "Just Works" installation experience that creates zero-leak, isolated environments allowing agents to replicate the packager stack without friction.
+### The Rule of Ones: The LIBRARIAN System Architecture
+The Nexus Librarian serves as the central cognitive memory of the ecosystem, anchored in:
+- **One Install Path:** Deployed as a core, high-availability service within the Unified Nexus.
+- **One Entry Point:** Unified access via the `nexus-librarian` MCP server tools and the "Librarian" tab in the Nexus Commander GUI.
+- **One Status:** Clear visibility into index health, watcher status, and resource counts.
+- **One Log:** Comprehensive indexing logs and sub-agent execution trails (ATP logs).
 
 ---
 
@@ -25,14 +28,27 @@ If there is drift between this file and the canonical outcomes/evidence, treat t
 
 ---
 
-## 🔍 Successful Outcomes
+## 🔍 Successful Outcomes (Nexus Librarian)
 
 As a user, I want:
 
-### 1. Portability & Isolation
-* **Standalone Execution**: The `/serverinstaller` directory can be copied to any repo and execute correctly without external dependencies.
-* **Environment Integrity**: The installer bootstraps from the host's existing tools and create isolated environments (e.g., `.venv`) to prevent leaks.
-* **Zero-Touch Replication**: A real agent can execute `install.py --headless` and achieve a functional stack without human intervention.
+### 1. Robust Knowledge Discovery
+* **Deep Search**: Query indexed files and URLs using natural language or keywords to find relevant technical resources.
+* **Universal Linker**: Automatically generate symbolic links or references to indexed materials so agents can "attach" knowledge to a conversation.
+* **Web Integration**: Add web URLs or entire public repositories to the knowledge base with a single command or GUI action.
+
+### 2. High-Fidelity Retrieval (ATP Hardening)
+* **Zero-Token Filtering**: Process large datasets (filtering, mapping) within the Librarian's execution environment to avoid context bloat in the LLM.
+* **AST-Based Security**: Execute code-based filtering queries only in a hardened sandbox that blocks malicious attribute access.
+* **Fragment Retrieval**: Only return the most relevant chunks of a document to the agent, keeping raw high-volume data isolated.
+
+### 3. Resource Resilience
+* **Offline Access**: Persist indexed content so it remains accessible even if the source URL or file path becomes temporarily unavailable.
+* **Automatic Watcher**: Detect changes in watched directories and re-index content in real-time to ensure the knowledge base never rots.
+
+### 4. Standalone & Integrated Utility
+* **Suite Sync**: Shares its index with the Observer dashboard for visual knowledge management.
+* **Standalone Mode**: Can be deployed as a standard MCP server in any environment without requiring the full Nexus GUI.
 
 ### 2. Intelligent Discovery & Autonomy
 * **Autonomous Bootstrap**: The Activator can fetch the entire Workforce Nexus suite from GitHub, allowing it to move from "standalone script" to "suite architect" without local source siblings.

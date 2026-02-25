@@ -1,3 +1,0 @@
-[console_scripts]
-mcp = mcp:main
-mcp-lib-verify = verify:verify_library
