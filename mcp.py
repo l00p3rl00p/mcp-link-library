@@ -736,6 +736,27 @@ class MCPServer:
         log_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = log_dir / "librarian_errors.log"
         self.watcher = None
+        # GAP-R3 FIX: Auto-start watcher on documents/ directory at server launch.
+        # Mission: "the ecosystem's memory is always accessible" requires continuous indexing.
+        self._auto_start_watcher()
+
+    def _auto_start_watcher(self):
+        """Auto-start the file watcher on the documents/ directory at launch.
+        Falls back gracefully if watchdog is not installed."""
+        if PollingObserver is None:
+            print("ℹ️  Watchdog not installed — real-time watcher disabled.", file=sys.stderr)
+            print("   Install with: pip install watchdog", file=sys.stderr)
+            return
+        docs_dir = self.library.app_dir / "documents"
+        docs_dir.mkdir(parents=True, exist_ok=True)
+        watch_paths = [str(docs_dir)]
+        self.watcher = NexusWatcher(self.library, watch_paths)
+        started = self.watcher.start()
+        if started:
+            print(f"👁️  Auto-watcher started on: {docs_dir}", file=sys.stderr)
+        else:
+            print("⚠️  Auto-watcher failed to start.", file=sys.stderr)
+            self.watcher = None
 
         
     def log_error(self, msg: str):
