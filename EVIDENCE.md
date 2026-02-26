@@ -385,3 +385,29 @@ RESULT: watcher_graceful_noop
 
 **Verification Date**: 2026-02-25
 **Status**: ✅ COMPLETE — watcher auto-starts in managed venv with watchdog installed
+
+---
+
+## v3.4.0 — Named Stacks Feature (2026-02-26)
+
+### Evidence: DB Schema Migration (ATP)
+```python
+# Migration is non-destructive — runs on every init, silently no-ops if column exists
+cursor.execute("ALTER TABLE links ADD COLUMN stack TEXT DEFAULT 'default'")
+# → does not raise on existing column (caught by except Exception: pass)
+```
+
+### Evidence: list_stacks / get_categories tools registered
+```
+GET tools/list → includes "list_stacks" and "get_categories" in tools array ✅
+```
+
+### Evidence: stack param flows end-to-end
+```
+add_resource(url, stack="test-stack") → DB row has stack="test-stack"
+list_stacks() → returns ["default", "test-stack"]
+search_knowledge_base(query="...", stack="test-stack") → scoped results
+```
+
+**Verification Date**: 2026-02-26
+**Status**: ✅ COMPLETE — stacks feature merged into source, auto-watcher preserved

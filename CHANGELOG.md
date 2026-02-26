@@ -1,5 +1,20 @@
 # Changelog - MCP Librarian (mcp-link-library)
 
+## [3.4.0] - 2026-02-26
+
+### Added
+- **Named Stacks**: Resources can now be organized into isolated named knowledge contexts ("stacks") — like NotebookLM projects. Use `stack='gravity-research'` when adding resources to keep them grouped.
+- **`list_stacks` tool**: Returns all stacks that have at least one active resource. Call this first when browsing without a specific stack in mind.
+- **`get_categories` tool**: Browses first and second-order categories within a stack (or across all stacks), with counts.
+- **`stack` param on `add_resource`**: Resources are filed into a named stack (defaults to `'default'`).
+- **`stack` param on `search_knowledge_base`**: Scope searches to a single stack or search all stacks by omitting the param.
+- **DB migration**: Existing `knowledge.db` databases gain a `stack` column automatically on first launch (non-destructive `ALTER TABLE`).
+- **CLI**: `--stack` flag for `--add`, `--list-stacks` flag to enumerate stacks from the command line.
+
+### Changed
+- `list_links()` now returns a 7-tuple `(id, url, title, domain, categories, is_active, stack)`.
+- Version bumped `3.3.1 → 3.4.0`.
+
 ## [3.3.4] - 2026-02-25
 
 ### Fixed

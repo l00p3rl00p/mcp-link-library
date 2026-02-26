@@ -39,7 +39,7 @@ import os
 import re
 import time
 import shlex
-__version__ = "3.3.1"
+__version__ = "3.4.0"
 
 try:
     from atp_sandbox import ATPSandbox
@@ -130,6 +130,7 @@ class SecureMcpLibrary:
                 domain TEXT NOT NULL,
                 description TEXT,
                 categories TEXT,
+                stack TEXT DEFAULT 'default',
                 is_active BOOLEAN DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 hash TEXT,
@@ -144,8 +145,14 @@ class SecureMcpLibrary:
             )
         ''')
         self.conn.commit()
+        # Migrate existing DBs: add stack column if absent
+        try:
+            self.cursor.execute("ALTER TABLE links ADD COLUMN stack TEXT DEFAULT 'default'")
+            self.conn.commit()
+        except Exception:
+            pass  # Column already exists
     
-    def add_link(self, url: str, categories: List[str] = None):
+    def add_link(self, url: str, categories: List[str] = None, stack: str = "default"):
         """Add a new link with secure metadata extraction."""
         validated_url = self._validate_url(url)
         url_hash = hashlib.sha256(validated_url.encode()).hexdigest()
@@ -220,25 +227,26 @@ class SecureMcpLibrary:
                  pass
 
         self.cursor.execute('''
-            INSERT OR REPLACE INTO links 
-            (url, title, domain, description, categories, is_active, hash, content) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO links
+            (url, title, domain, description, categories, stack, is_active, hash, content)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            validated_url, 
-            metadata['title'], 
-            metadata['domain'], 
-            metadata['description'], 
-            ','.join(categories), 
+            validated_url,
+            metadata['title'],
+            metadata['domain'],
+            metadata['description'],
+            ','.join(categories),
+            stack or 'default',
             1,
             url_hash,
             content
         ))
         self.conn.commit()
         return self.cursor.lastrowid
-    
-    def list_links(self, category: str = None, search: str = None, only_active: bool = True):
-        """List links with optional filtering."""
-        query = "SELECT id, url, title, domain, categories, is_active FROM links WHERE 1=1"
+
+    def list_links(self, category: str = None, search: str = None, only_active: bool = True, stack: str = None):
+        """List links with optional filtering. Returns (id, url, title, domain, categories, is_active, stack)."""
+        query = "SELECT id, url, title, domain, categories, is_active, COALESCE(stack,'default') FROM links WHERE 1=1"
         params = []
         
         if only_active:
@@ -249,9 +257,52 @@ class SecureMcpLibrary:
         if search:
             query += " AND (title LIKE ? OR url LIKE ? OR description LIKE ? OR content LIKE ?)"
             params.extend([f"%{search}%", f"%{search}%", f"%{search}%", f"%{search}%"])
-            
+        if stack:
+            query += " AND COALESCE(stack,'default') = ?"
+            params.append(stack)
+
         self.cursor.execute(query, params)
         return self.cursor.fetchall()
+
+    def list_stacks(self) -> List[str]:
+        """Return all distinct stack names that have at least one active resource."""
+        self.cursor.execute(
+            "SELECT DISTINCT COALESCE(stack,'default') FROM links WHERE is_active=1 ORDER BY 1"
+        )
+        return [row[0] for row in self.cursor.fetchall()]
+
+    def get_categories(self, stack: str = None) -> List[dict]:
+        """
+        Return first and second-order categories with counts.
+        Categories are stored as comma-separated strings, e.g. 'docs,api,reference'.
+        First-order: the first token.  Second-order: the second token (if present).
+        """
+        query = "SELECT categories, COUNT(*) as cnt FROM links WHERE is_active=1"
+        params = []
+        if stack:
+            query += " AND COALESCE(stack,'default') = ?"
+            params.append(stack)
+        query += " GROUP BY categories"
+        self.cursor.execute(query, params)
+        rows = self.cursor.fetchall()
+
+        first_order: dict = {}
+        second_order: dict = {}
+        for (cats_str, cnt) in rows:
+            parts = [c.strip() for c in (cats_str or "uncategorized").split(",") if c.strip()]
+            first = parts[0] if parts else "uncategorized"
+            first_order[first] = first_order.get(first, 0) + cnt
+            if len(parts) > 1:
+                second = parts[1]
+                key = f"{first}/{second}"
+                second_order[key] = second_order.get(key, 0) + cnt
+
+        result = []
+        for cat, cnt in sorted(first_order.items()):
+            result.append({"category": cat, "order": 1, "count": cnt})
+        for cat, cnt in sorted(second_order.items()):
+            result.append({"category": cat, "order": 2, "count": cnt})
+        return result
 
     def update_link(self, link_id: int, url: str = None, categories: List[str] = None, active: bool = None):
         """Update an existing link."""
@@ -860,25 +911,30 @@ class MCPServer:
                 result = {
                     "tools": [{
                         "name": "search_knowledge_base",
-                        "description": "Search indexed files and documents",
+                        "description": "Search indexed files and documents within a named stack (knowledge context). WORKFLOW: 1) If the user hasn't specified a stack, call list_stacks first to see available stacks (like NotebookLM projects). 2) Call get_categories on the chosen stack to understand what's inside. 3) Then search with a query + stack name. Omit stack to search across all stacks.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "query": {
                                     "type": "string",
                                     "description": "Search term"
+                                },
+                                "stack": {
+                                    "type": "string",
+                                    "description": "Stack name to search within (e.g. 'gravity-research', 'cookie-recipes'). Call list_stacks first if unsure. Omit to search all stacks."
                                 }
                             },
                             "required": ["query"]
                         }
                     }, {
                         "name": "add_resource",
-                        "description": "Add a new resource (URL or file) to the Knowledge Base",
+                        "description": "Add a new resource (URL or file) to the Knowledge Base. Assign it to a named stack to keep it grouped with related knowledge. Stacks are isolated knowledge contexts — like NotebookLM projects, but called stacks here. Example: stack='gravity-research' for physics papers, stack='cookie-recipes' for baking docs.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "url": {"type": "string", "description": "URL or file:// path to add"},
-                                "categories": {"type": "string", "description": "Comma-separated categories (e.g. 'docs,api')"}
+                                "categories": {"type": "string", "description": "Comma-separated categories (e.g. 'docs,api')"},
+                                "stack": {"type": "string", "description": "Stack name to file this resource under (e.g. 'gravity-research'). Defaults to 'default'. Create a new stack by simply using a new name."}
                             },
                             "required": ["url"]
                         }
@@ -990,6 +1046,25 @@ class MCPServer:
                             },
                             "required": ["server_id", "tags"]
                         }
+                    }, {
+                        "name": "list_stacks",
+                        "description": "List all named stacks (knowledge contexts) that have indexed resources. Stacks are like projects in NotebookLM or notebooks in Stitch — each one is an isolated, named knowledge context. Call this first whenever the user wants to search or browse without specifying a stack, so you can ask them which context to use.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    }, {
+                        "name": "get_categories",
+                        "description": "Browse the categories of knowledge inside a stack (or across all stacks). Use before searching to understand what topics are covered, so you can guide the user to the right search terms or confirm they have the right stack.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "stack": {
+                                    "type": "string",
+                                    "description": "Optional: scope to this stack. Omit to see categories across all stacks."
+                                }
+                            }
+                        }
                     }]
                 }
             elif method == "tools/call":
@@ -997,16 +1072,18 @@ class MCPServer:
                 args = params.get("arguments", {})
                 if name == "search_knowledge_base":
                     query = args.get("query")
-                    # Searching title, url, description
-                    matches = self.library.list_links(search=query)
-                    text = "Found matches:\n"
+                    stack = args.get("stack") or None
+                    matches = self.library.list_links(search=query, stack=stack)
+                    stack_tag = f" in stack '{stack}'" if stack else ""
+                    text = f"Found matches{stack_tag}:\n"
                     if not matches:
                         text += "No results found."
                     else:
                         for m in matches:
-                            # m = (id, url, title, domain, categories, is_active)
+                            # m = (id, url, title, domain, categories, is_active, stack)
                             domain_tag = f"[{m[3]}]" if m[3] else ""
-                            text += f"- {domain_tag} {m[2]} ({m[1]})\n"
+                            stack_label = f" [{m[6]}]" if m[6] and m[6] != "default" else ""
+                            text += f"- {domain_tag}{stack_label} {m[2]} ({m[1]})\n"
                     
                     result = {
                         "content": [{
@@ -1040,10 +1117,11 @@ class MCPServer:
                 elif name == "add_resource":
                     url = args.get("url")
                     cats = args.get("categories", "").split(",") if args.get("categories") else None
+                    stack = args.get("stack", "default") or "default"
                     try:
-                        new_id = self.library.add_link(url, cats)
+                        new_id = self.library.add_link(url, cats, stack=stack)
                         result = {
-                            "content": [{"type": "text", "text": f"✅ Added resource ID: {new_id}"}]
+                            "content": [{"type": "text", "text": f"✅ Added resource ID: {new_id} to stack '{stack}'"}]
                         }
                     except Exception as e:
                         result = {
@@ -1146,6 +1224,26 @@ class MCPServer:
                     result = {
                         "content": [{"type": "text", "text": f"✅ Linked {len(tags)} tags to {sid}"}]
                     }
+                elif name == "list_stacks":
+                    stacks = self.library.list_stacks()
+                    if stacks:
+                        text = "Available stacks:\n" + "\n".join(f"- {s}" for s in stacks)
+                    else:
+                        text = "No stacks yet. Add resources with a stack name to create one."
+                    result = {"content": [{"type": "text", "text": text}]}
+                elif name == "get_categories":
+                    stack = args.get("stack") or None
+                    cats = self.library.get_categories(stack=stack)
+                    if cats:
+                        header = f"Categories{' in stack ' + stack if stack else ' (all stacks)'}:"
+                        lines = [header]
+                        for c in cats:
+                            indent = "  " if c["order"] == 1 else "    └─ "
+                            lines.append(f"{indent}{c['category']}  ({c['count']} resources)")
+                        text = "\n".join(lines)
+                    else:
+                        text = "No categories found."
+                    result = {"content": [{"type": "text", "text": text}]}
                 else:
                     raise ValueError(f"Unknown tool: {name}")
             elif method == "ping":
@@ -1278,6 +1376,8 @@ def main():
     )
     parser.add_argument('--add', help="Add a new link")
     parser.add_argument('--categories', nargs='+', help="Categories for the link")
+    parser.add_argument('--stack', help="Stack name for --add (e.g. 'gravity-research'). Defaults to 'default'.")
+    parser.add_argument('--list-stacks', action='store_true', dest='list_stacks', help="List all named stacks")
     parser.add_argument('--list', action='store_true', help="List active links")
     parser.add_argument('--category', help="Filter listing by category")
     parser.add_argument('--search', help="Search links")
@@ -1353,11 +1453,21 @@ def main():
     
     if args.add:
         try:
-            link_id = library.add_link(args.add, args.categories)
-            print(f"✅ Added link with ID: {link_id}")
+            stack = getattr(args, 'stack', None) or 'default'
+            link_id = library.add_link(args.add, args.categories, stack=stack)
+            print(f"✅ Added link with ID: {link_id} (stack: {stack})")
         except Exception as e:
             print(f"❌ Failed to add link: {e}")
-            
+
+    elif getattr(args, 'list_stacks', False):
+        stacks = library.list_stacks()
+        if stacks:
+            print("Available stacks:")
+            for s in stacks:
+                print(f"  - {s}")
+        else:
+            print("No stacks yet.")
+
     elif args.list:
         links = library.list_links(category=args.category, search=args.search)
         if args.json:
