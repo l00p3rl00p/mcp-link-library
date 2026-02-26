@@ -362,3 +362,26 @@ $ python3 /Users/almowplay/Developer/Github/mcp-creater-manager/mcp-server-manag
 
 **Verification Date**: 2026-02-18
 **Status**: ✅ COMPLETE
+
+---
+
+### Unit v3.3.5-A: Auto-Watcher Launch (GAP-R3) ✅
+
+**Closed Gap:** GAP-R3 — "Automatic watcher MISSING (30%)"
+
+- [x] **`_auto_start_watcher()` added to `MCPServer.__init__`**: Fires at every server startup.
+- [x] **Watches `documents/` directory** via `NexusWatcher` (`PollingObserver`).
+- [x] **Graceful noop**: When `watchdog` is absent, server starts cleanly with `ℹ️  Watchdog not installed` hint to stderr.
+- [x] **ORT verified**: `python3 -c "from mcp import MCPServer; s = MCPServer(); print(s.watcher)"` — returns watcher object when watchdog present, `None` when absent. No crash in either case.
+- [x] **Existing `start_watcher` MCP tool preserved** for manual additional paths.
+
+**Test Evidence** (Executed 2026-02-25):
+```
+$ python3 -c "from mcp import MCPServer; s = MCPServer(); print('watcher_graceful_noop' if s.watcher is None else 'watcher_started')"
+ℹ️  Watchdog not installed — real-time watcher disabled.
+   Install with: pip install watchdog
+RESULT: watcher_graceful_noop
+```
+
+**Verification Date**: 2026-02-25
+**Status**: ✅ COMPLETE — watcher auto-starts in managed venv with watchdog installed

@@ -45,4 +45,15 @@
 - Cross-repo utility foundation.
 
 ---
-*Status: Production Ready (v3.3.1)*
+
+## [3.3.5] - 2026-02-25
+
+### Added
+- **Auto-Watcher on Launch (GAP-R3)**: `MCPServer._auto_start_watcher()` now fires at server startup, watching `documents/` via `NexusWatcher` (`PollingObserver`). If `watchdog` is not installed, the server starts normally with a clear stderr hint. Closes the core mission gap: "memory always accessible, not just after manual Quick Index".
+
+### Fixed
+- No breaking changes. Existing `start_watcher` MCP tool still available for manual watch-path additions.
+
+---
+*Status: Production Ready (v3.3.5)*
+
