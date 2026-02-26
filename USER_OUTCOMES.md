@@ -104,8 +104,8 @@ To fully align with these outcomes, the following enhancements are planned:
 * **Respect Local Code**: Treatment of the current repository state as the "source of truth." Never overwrite local changes with upstream templates.
 
 ---
-### 2026-02-25 Mission Audit Results (v3.3.4 Red Team)
-**Mission Score: 80%** | Anchored to: *"Persistent, searchable Source of Truth — the ecosystem's memory is always accessible and secure."*
+### 2026-02-25 Mission Audit Results (v3.3.5 Red Team)
+**Mission Score: 87%** | Anchored to: *"Persistent, searchable Source of Truth — the ecosystem's memory is always accessible and secure."*
 
 | Feature | Status | Confidence |
 |---|---|---|
@@ -113,17 +113,12 @@ To fully align with these outcomes, the following enhancements are planned:
 | Web integration: add URL to knowledge base | ✅ | 82% |
 | ATP-hardened sandbox (AST-based security) | ✅ | 93% |
 | Zero-token filtering (fragment retrieval only) | ✅ | 88% |
-| **Automatic watcher (real-time re-index)** | ❌ | 30% |
+| **Automatic watcher (real-time re-index) (GAP-R3)**| ✅ | 87% |
 | Offline access (persist after source unavailable) | ✅ | 80% |
 | Index health visible in GUI | ✅ | 80% |
 | Standalone MCP server (no full GUI needed) | ✅ | 90% |
 | `documents/` auto-created if missing | ✅ | 95% |
 
-#### 🔴 GAP-R3 — HIGHEST PRIORITY (Open — v48 Backlog)
-> **Claim**: "Automatic Watcher — detect changes in watched directories and re-index content in real-time."
-> **Gap**: **MISSING** — no `watchdog` or equivalent runner exists. Files are only indexed on install or manual `Quick Index`. Any content added after the last manual trigger is invisible to agents and users.
-> **Mission Violation**: The mission says *"the ecosystem's memory is always accessible."* Without a watcher, the memory rots silently.
-> **Fix**: Implement a `watchdog` `Observer` on the `documents/` directory. On file change events: re-run the index pipeline for the affected file only. Configurable poll interval for URL re-checks (default: 15 min).
-
 ---
-*Status: v3.3.4 Audited — 2026-02-25. 🔴 GAP-R3 is the highest-priority open item for this repo.*
+*Status: v3.3.5 RELEASED — 2026-02-25. GAP-R3 Closed.*
+
