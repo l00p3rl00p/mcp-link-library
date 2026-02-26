@@ -1,6 +1,12 @@
 # Changelog - MCP Librarian (mcp-link-library)
 
-## [3.3.1] - 2026-02-20
+## [3.3.4] - 2026-02-25
+
+### Fixed
+- **Auto-Create Documents Directory**: `verify.py` now auto-creates the `documents/` directory on first health check so users never see a false-negative ❌ on a fresh install.
+- **Non-Fatal Downgrade**: Missing `documents_dir` is now a `warning` (not `error`) — the DB scan roots are the real index; a missing static folder is cosmetic.
+
+
 
 ### Changed
 - **Suite Version Sync**: Aligned component and docs to Nexus `v3.3.1`.
