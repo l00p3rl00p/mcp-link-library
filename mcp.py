@@ -221,9 +221,11 @@ class SecureMcpLibrary:
                         # Text Handling
                         try:
                             content = path.read_text(errors='ignore')
-                        except:
+                        except OSError as e:
+                            logger.error(f"OS error: {e}", exc_info=True)
                             pass
-             except:
+             except OSError as e:
+                 logger.error(f"OS error: {e}", exc_info=True)
                  pass
 
         self.cursor.execute('''
@@ -689,7 +691,8 @@ class FileIndexer:
             try:
                 if re.search(regex, rel_path) or fnmatch.fnmatch(path.name, pattern):
                     return True
-            except:
+            except OSError as e:
+                logger.error(f"OS error: {e}", exc_info=True)
                 continue
                 
         return False
@@ -816,7 +819,8 @@ class MCPServer:
             timestamp = datetime.datetime.now().isoformat()
             with open(self.log_path, "a") as f:
                 f.write(f"[{timestamp}] {msg}\n")
-        except:
+        except OSError as e:
+            logger.error(f"OS error: {e}", exc_info=True)
             pass # Last resort, don't crash
         
     def run(self):
@@ -1302,7 +1306,8 @@ class MCPServer:
                      # Binary check: try reading as text, if fails return base64 or msg
                      try:
                          return path.read_text(errors='ignore')
-                     except:
+                     except OSError as e:
+                         logger.error(f"OS error: {e}", exc_info=True)
                          return f"[Binary File] Size: {path.stat().st_size} bytes"
                 else:
                     return f"Error: File not found at {path}"

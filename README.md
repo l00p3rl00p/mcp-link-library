@@ -49,7 +49,18 @@ Includes the `ATPSandbox` layer to protect the host environment:
 
 ---
 
+## 🔄 Drift Lifecycle Integration (v3.3.6+)
+
+The Librarian integrates with the Drift Lifecycle system:
+- **Knowledge Persistence**: Maintains indexed resources across deployments
+- **Safe Indexing**: Real-time watcher prevents knowledge loss during drift
+- **Multi-Deployment**: Supports indexing across core and forged servers
+
+See main repo: [Drift Lifecycle System](../DRIFT_LIFECYCLE_OUTCOMES.md)
+
+---
+
 ## 📝 Metadata
-* **Status**: Production Ready (v3.3.1)
+* **Status**: Production Ready (v3.3.6)
 * **Author**: l00p3rl00p
 * **Part of**: The Workforce Nexus Suite

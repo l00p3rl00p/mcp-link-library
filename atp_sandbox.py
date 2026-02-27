@@ -1,3 +1,24 @@
+"""
+ATP Sandbox — Restricted code execution for agent tool data processing.
+
+THREAT MODEL:
+- Prevents execution of arbitrary untrusted code from agent protocol
+- Blocks file access, network access, subprocess, and import statements
+- Uses two-phase defense: AST inspection + string-based pattern blocking
+
+SECURITY ASSUMPTIONS:
+- Input code is untrusted (may be from adversarial agent output)
+- Context dict may contain sensitive tool data; isolation prevents leakage
+- stdout/stderr must be captured to prevent protocol pollution
+- No external module imports available; only safe stdlib builtins
+
+DESIGN RATIONALE:
+- Dual-phase security: AST analysis catches structural attacks, string patterns catch obfuscation
+- Redundancy ensures no single bypass defeats both defenses
+- StringIO capture ensures tool protocol integrity (agent cannot inject output)
+- Exception handling logs all violations for observability
+"""
+
 import json
 import datetime
 import math
@@ -7,9 +28,29 @@ import io
 class ATPSandbox:
     """
     Restricted Python Sandbox for ATP (Agent Tool Protocol).
-    Designed to process tool data (filter/map/reduce) without host access.
+    
+    Designed to process tool data (filter/map/reduce operations) without granting
+    host access, file system access, or network access to the sandboxed code.
+    
+    THREAT MODEL:
+    - Protects host from malicious code execution via agent protocol
+    - Blocks all imports, file operations, and system calls
+    - Prevents class hierarchy escapes (type(), getattr(), etc.)
+    
+    ASSUMPTIONS:
+    - Only safe_builtins are exposed to sandboxed code
+    - Context data is untrusted; reads are safe but writes are isolated
+    - Caller validates result before using in production contexts
     """
     def __init__(self):
+        """
+        Initialize sandbox with whitelist of safe builtins.
+        
+        SECURITY RATIONALE:
+        - Only specific builtins are exposed (no open, eval, exec, etc.)
+        - Prevents all import statements at sandboxed level
+        - Whitelist approach: only safe functions explicitly included
+        """
         # The ONLY things the agent's code can see
         self.safe_builtins = {
             'abs': abs, 'all': all, 'any': any, 'ascii': ascii, 'bin': bin, 'bool': bool,
@@ -31,7 +72,30 @@ class ATPSandbox:
         
     def execute(self, code: str, context: dict = None):
         """
-        Executes code and returns the 'result' variable or the local scope.
+        Execute sandboxed code with two-phase security validation.
+        
+        THREAT MODEL:
+        - Phase 1 (AST): Structural analysis blocks imports, eval, exec, dunders
+        - Phase 2 (String): Pattern matching catches obfuscation attempts
+        - Redundancy: Both phases must pass; single failure blocks execution
+        
+        ASSUMPTIONS:
+        - Code is untrusted (may be adversarial)
+        - Context is untrusted but read-only in sandboxed scope
+        - Result variable is the output; all other locals are ignored
+        
+        ERROR HANDLING:
+        - SyntaxError: Returns success=False with error message
+        - Security violations: Returns specific violation type detected
+        - Runtime exceptions: Caught and returned as error dict
+        - stdout/stderr: Captured and returned separately to prevent pollution
+        
+        Args:
+            code (str): Python code to execute in sandbox
+            context (dict): Untrusted data available as 'context' in sandbox
+            
+        Returns:
+            dict: {"success": bool, "result": ..., "error": ..., "logs": ...}
         """
         # Capture stdout to prevent protocol pollution
         stdout_capture = io.StringIO()

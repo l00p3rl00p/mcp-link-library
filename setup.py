@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="mcp-link-library",
-    version="3.3.0",
+    version="3.3.6",
     py_modules=["mcp", "verify"],
     install_requires=[
         "requests",
