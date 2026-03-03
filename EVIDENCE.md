@@ -411,3 +411,117 @@ search_knowledge_base(query="...", stack="test-stack") → scoped results
 
 **Verification Date**: 2026-02-26
 **Status**: ✅ COMPLETE — stacks feature merged into source, auto-watcher preserved
+
+---
+
+## Unit 2 & 3: GUI Reliability + Operational Awareness (v6.0) ✅
+
+**Contract**: [AI-SDK-PROD-BUILD-v6.md](./AI-SDK-PROD-BUILD-v6.md)
+
+### Unit 2: GUI Background Service + PID Management
+
+**Evidence** (Executed 2026-03-03):
+
+```bash
+# 1. Start daemon
+$ python3 gui_bridge.py --daemon
+Starting GUI Bridge in daemon mode...
+# (Exits immediately with PID file written)
+
+# 2. Verify PID file written
+$ cat ~/.mcpinv/gui_bridge.pid
+3767
+
+# 3. Confirm process alive
+$ python3 gui_bridge.py --status
+Running (PID 3767)
+# Exit code: 0
+
+# 4. Confirm bridge responding
+$ curl -s http://127.0.0.1:5001/health
+{"status":"ok"}
+
+# 5. Stop daemon
+$ python3 gui_bridge.py --stop
+GUI Bridge stopped.
+
+# 6. Confirm stopped
+$ python3 gui_bridge.py --status
+Stopped
+# Exit code: 1
+
+# 7. PID file cleaned up
+$ test ! -f ~/.mcpinv/gui_bridge.pid && echo "PID file removed" || echo "FAIL: stale PID"
+PID file removed
+```
+
+**Test Results** (Executed 2026-03-03):
+```bash
+$ python3 -m pytest tests/test_daemon.py -v
+============================= 8 passed in 0.31s ==============================
+test_daemon.py::TestPidHelpers::test_clean_stale_pid_removes_file_for_dead_pid PASSED
+test_daemon.py::TestPidHelpers::test_pid_alive_returns_false_for_nonexistent_pid PASSED
+test_daemon.py::TestPidHelpers::test_pid_alive_returns_true_for_self PASSED
+test_daemon.py::TestPidHelpers::test_read_pid_returns_int_when_file_present PASSED
+test_daemon.py::TestPidHelpers::test_read_pid_returns_none_when_file_absent PASSED
+test_daemon.py::TestCmdStatus::test_status_running_when_alive PASSED
+test_daemon.py::TestCmdStatus::test_status_stopped_when_no_pid_file PASSED
+test_daemon.py::TestCmdStop::test_stop_exits_1_when_no_pid_file PASSED
+```
+
+**Verification Date**: 2026-03-03
+**Status**: ✅ COMPLETE — GUI bridge daemon mode fully operational with PID management
+
+### Unit 3: Version Health Endpoint + Dashboard Indicator
+
+**Evidence** (Executed 2026-03-03):
+
+```bash
+# 1. Health endpoint returns version data
+$ curl -s http://127.0.0.1:5001/version-health | python3 -m json.tool
+{
+  "source_version": "3.4.0",
+  "installed_version": "3.4.0",
+  "bin_present": true,
+  "needs_repair": false,
+  "reason": null,
+  "action": null
+}
+
+# 2. ATP sandbox verification (zero-LLM)
+$ python3 -c "
+import json, subprocess, sys
+r = subprocess.run(['curl','-s','http://127.0.0.1:5001/version-health'], capture_output=True, text=True)
+d = json.loads(r.stdout)
+assert 'needs_repair' in d, 'missing needs_repair'
+assert 'source_version' in d, 'missing source_version'
+assert 'installed_version' in d, 'missing installed_version'
+print('[VERIFIED] /version-health returns required keys')
+"
+[VERIFIED] /version-health returns required keys
+```
+
+**Test Results** (Executed 2026-03-03):
+```bash
+$ python3 -m pytest tests/test_version_health.py -v
+============================= 9 passed in 0.31s ==============================
+test_version_health.py::TestReadVersion::test_extracts_double_quoted_version PASSED
+test_version_health.py::TestReadVersion::test_extracts_single_quoted_version PASSED
+test_version_health.py::TestReadVersion::test_returns_none_for_absent_file PASSED
+test_version_health.py::TestReadVersion::test_returns_none_when_no_version_in_file PASSED
+test_version_health.py::TestVersionHealthEndpoint::test_endpoint_returns_required_keys PASSED
+test_version_health.py::TestVersionHealthEndpoint::test_needs_repair_false_when_versions_match PASSED
+test_version_health.py::TestVersionHealthEndpoint::test_needs_repair_false_when_not_installed PASSED
+test_version_health.py::TestVersionHealthEndpoint::test_needs_repair_true_when_binary_missing PASSED
+test_version_health.py::TestVersionHealthEndpoint::test_needs_repair_true_when_versions_differ PASSED
+```
+
+**GUI Dashboard Integration**:
+- `App.tsx` fetches `/version-health` every 30s
+- Dashboard renders version health badge with:
+  - ✅ Green badge: "v3.4.0" when versions match
+  - ⚠️ Red badge: "Repair Needed" with tooltip when `needs_repair: true`
+  - Tooltip shows exact action command: "Run 'mcp-activator --repair' to sync the installed runtime."
+
+**Verification Date**: 2026-03-03
+**Status**: ✅ COMPLETE — Version health monitoring fully integrated into dashboard
