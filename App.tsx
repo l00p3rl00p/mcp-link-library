@@ -19,13 +19,23 @@ interface LogEntry {
   suggestion?: string;
 }
 
+interface VersionHealth {
+  source_version: string | null;
+  installed_version: string | null;
+  bin_present: boolean;
+  needs_repair: boolean;
+  reason: string | null;
+  action: string | null;
+}
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [systemStatus, setSystemStatus] = useState<any>({});
   const [artifacts, setArtifacts] = useState<any[]>([]);
+  const [versionHealth, setVersionHealth] = useState<VersionHealth | null>(null);
 
-  // Real-time Data Fetching
+  // Real-time Data Fetching (core — every 2s)
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -45,6 +55,22 @@ const App: React.FC = () => {
 
     fetchData();
     const interval = setInterval(fetchData, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Version health polling (every 30s — slow-changing data)
+  useEffect(() => {
+    const fetchVersionHealth = async () => {
+      try {
+        const res = await fetch('http://127.0.0.1:5001/version-health');
+        if (res.ok) setVersionHealth(await res.json());
+      } catch {
+        // Bridge may not be running yet; silent failure is fine here.
+      }
+    };
+
+    fetchVersionHealth();
+    const interval = setInterval(fetchVersionHealth, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -118,13 +144,29 @@ const App: React.FC = () => {
             <p style={{ color: 'var(--text-dim)' }}>System Observability & Mission Control</p>
           </div>
 
-          <div style={{ display: 'flex', gap: '16px' }}>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
             <div className="glass-card" style={{ padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div className="thinking-indicator"></div>
               <span style={{ fontSize: '14px', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                 {systemStatus.posture || 'Initializing...'}
               </span>
             </div>
+            {/* Version health badge — GR-BADGE-TOOLTIP: action surfaced as title */}
+            {versionHealth && (
+              <div
+                className="glass-card"
+                style={{ padding: '8px 16px' }}
+                title={versionHealth.action ?? versionHealth.reason ?? undefined}
+              >
+                {versionHealth.needs_repair ? (
+                  <span className="badge badge-danger">⚠ Repair Needed</span>
+                ) : (
+                  <span className="badge badge-success">
+                    v{versionHealth.installed_version ?? versionHealth.source_version ?? '?'}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="glass-card" style={{ padding: '8px 16px' }}>
               <span className="badge badge-success">Online</span>
             </div>

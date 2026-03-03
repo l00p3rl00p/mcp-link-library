@@ -19,62 +19,315 @@ DESIGN RATIONALE:
 - SQLite database access catches OSError for permission issues
 - Process control (start/stop) validates command structure before subprocess.Popen()
 - Logging at error points enables debugging without exposing secrets
+- Daemon mode uses POSIX double-fork to prevent zombies and detach from terminal
+- Version health reads __version__ via regex (no import of target files)
 """
 
+from __future__ import annotations
+
+import argparse
+import logging
 import os
 import json
+import re
+import shlex
+import signal
 import sqlite3
 import subprocess
+import sys
+import time
+from typing import Optional
 from flask import Flask, jsonify
 from flask_cors import CORS
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 # SECURITY: Restrict CORS to local dev origins only (this GUI is local-first).
-CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "http://localhost:5001", "http://127.0.0.1:5001"])
+CORS(app, origins=[
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "http://localhost:5174", "http://127.0.0.1:5174",
+    "http://localhost:5001", "http://127.0.0.1:5001",
+])
 
 LOG_PATH = Path.home() / ".mcpinv" / "session.jsonl"
+PID_FILE = Path.home() / ".mcpinv" / "gui_bridge.pid"
+
+# ---------------------------------------------------------------------------
+# PID management helpers (GR-DAEMON-NO-ZOMBIE, GR-PID-STALE-CLEAN)
+# ---------------------------------------------------------------------------
+
+def _write_pid(pid: int) -> None:
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PID_FILE.write_text(str(pid))
+
+
+def _read_pid() -> Optional[int]:
+    try:
+        return int(PID_FILE.read_text().strip())
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # Process exists but owned by another user — treat as alive.
+        return True
+
+
+def _clean_stale_pid() -> bool:
+    """Remove PID file if process is no longer running. Returns True if cleaned."""
+    pid = _read_pid()
+    if pid is not None and not _pid_alive(pid):
+        PID_FILE.unlink(missing_ok=True)
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# POSIX double-fork daemon (GR-DAEMON-NO-ZOMBIE)
+# ---------------------------------------------------------------------------
+
+def _daemonize() -> None:
+    """
+    Classic POSIX double-fork daemonisation.
+
+    After this call, the calling process (parent) exits; the surviving grandchild
+    is fully detached from the terminal and will call app.run() to serve Flask.
+
+    GR-DAEMON-NO-ZOMBIE: double-fork prevents the daemon from ever becoming a
+    zombie because the intermediate parent exits before the grandchild starts.
+    """
+    # First fork — parent exits; intermediate child continues.
+    try:
+        pid = os.fork()
+        if pid > 0:
+            # Original parent: wait briefly for PID file to appear, then exit.
+            for _ in range(30):   # up to 3 seconds
+                time.sleep(0.1)
+                if PID_FILE.exists():
+                    break
+            sys.exit(0)
+    except OSError as exc:
+        print(f"Fork #1 failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    # Intermediate child: create new session, detach from terminal.
+    os.setsid()
+
+    # Second fork — intermediate child exits; grandchild can never re-acquire
+    # a controlling terminal.
+    try:
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)
+    except OSError as exc:
+        print(f"Fork #2 failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    # Grandchild (daemon): redirect std{in,out,err} to /dev/null.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    with open(os.devnull, "r") as devnull_r, open(os.devnull, "a") as devnull_w:
+        os.dup2(devnull_r.fileno(), sys.stdin.fileno())
+        os.dup2(devnull_w.fileno(), sys.stdout.fileno())
+        os.dup2(devnull_w.fileno(), sys.stderr.fileno())
+
+    _write_pid(os.getpid())
+
+
+# ---------------------------------------------------------------------------
+# CLI commands
+# ---------------------------------------------------------------------------
+
+def cmd_start_daemon() -> None:
+    """Start gui_bridge as a background daemon (GR-GUI-STARTS-LAST applied)."""
+    # Check if already running.
+    _clean_stale_pid()
+    pid = _read_pid()
+    if pid is not None and _pid_alive(pid):
+        print(f"GUI Bridge already running (PID {pid}).")
+        sys.exit(0)
+
+    # GR-GUI-STARTS-LAST: warn (don't hard-fail) if Nexus binaries are absent.
+    bin_dir = Path.home() / ".mcp-tools" / "bin"
+    if not bin_dir.exists():
+        print(
+            "WARNING: ~/.mcp-tools/bin not found. "
+            "Starting GUI Bridge in degraded mode. "
+            "Run 'mcp-activator --sync' to rebuild Nexus binaries.",
+            file=sys.stderr,
+        )
+
+    _daemonize()
+    # Execution continues only in the daemonised grandchild.
+    host = os.environ.get("NEXUS_BIND", "127.0.0.1")
+    app.run(host=host, port=5001, debug=False)
+
+
+def cmd_stop() -> None:
+    """Send SIGTERM to the running daemon and clean up PID file."""
+    _clean_stale_pid()
+    pid = _read_pid()
+    if pid is None:
+        print("GUI Bridge is not running.")
+        sys.exit(1)
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+        PID_FILE.unlink(missing_ok=True)
+        print("GUI Bridge stopped.")
+    except ProcessLookupError:
+        PID_FILE.unlink(missing_ok=True)
+        print("GUI Bridge process not found (PID file cleaned).")
+        sys.exit(1)
+
+
+def cmd_status() -> None:
+    """
+    Print daemon status and exit with 0 (running) or 1 (stopped).
+    Output is intentionally machine-readable.
+    """
+    cleaned = _clean_stale_pid()
+    pid = _read_pid()
+
+    if pid is not None and _pid_alive(pid):
+        print(f"Running (PID {pid})")
+        sys.exit(0)
+    else:
+        if cleaned:
+            print("Stopped (stale PID cleaned)")
+        else:
+            print("Stopped")
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Version-health helper (GR-VERSION-READ-NO-IMPORT)
+# ---------------------------------------------------------------------------
+
+def _read_version(path: Path) -> Optional[str]:
+    """
+    Extract __version__ from a Python file via regex.
+    Never imports the file to avoid side-effects. (GR-VERSION-READ-NO-IMPORT)
+    """
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        m = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', text)
+        return m.group(1) if m else None
+    except OSError:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Flask routes
+# ---------------------------------------------------------------------------
 
 @app.route('/health', methods=['GET'])
 def health():
     """
     Health check endpoint (no authentication required).
-    
+
     THREAT MODEL:
     - Publicly accessible status endpoint with no secrets exposed
     - Used by load balancers and status monitors
     - No database queries; pure in-memory response
-    
+
     Returns:
         JSON: {"status": "ok"}
     """
     return jsonify({"status": "ok"})
 
+
+@app.route('/version-health', methods=['GET'])
+def version_health():
+    """
+    Compare source vs installed Librarian version to detect repair-needed state.
+
+    THREAT MODEL:
+    - Reads two local Python files via regex (no import, no exec)
+    - No user-controlled input; pure filesystem read
+    - Returns structured JSON; no sensitive data exposed
+
+    GR-NO-REPAIR-FALSE-POSITIVE: If installed mirror does not exist, needs_repair=False.
+    GR-VERSION-READ-NO-IMPORT: Version extracted via re.search, not import.
+
+    Returns:
+        JSON: {
+            source_version, installed_version,
+            needs_repair, reason, action,
+            bin_present
+        }
+    """
+    # Source version: from THIS repo's mcp.py
+    source_mcp = Path(__file__).parent / "mcp.py"
+    source_version = _read_version(source_mcp)
+
+    # Installed version: from central install mirror
+    installed_mcp = Path.home() / ".mcp-tools" / "mcp-link-library" / "mcp.py"
+    installed_version = _read_version(installed_mcp)
+
+    # Binary presence check
+    bin_path = Path.home() / ".mcp-tools" / "bin" / "mcp-librarian"
+    bin_present = bin_path.exists()
+
+    needs_repair = False
+    reason = None
+    action = None
+
+    if installed_version is None:
+        # Mirror not installed yet — not a repair situation
+        reason = "Not installed centrally yet (mcp-activator --sync recommended)."
+    elif not bin_present:
+        # Binary missing despite version match → broken state
+        needs_repair = True
+        reason = f"mcp-librarian binary missing from ~/.mcp-tools/bin (installed version: {installed_version})."
+        action = "Run 'mcp-activator --repair' to restore the Nexus binaries."
+    elif source_version and installed_version != source_version:
+        needs_repair = True
+        reason = f"Source version ({source_version}) differs from installed ({installed_version})."
+        action = "Run 'mcp-activator --repair' to sync the installed runtime."
+
+    return jsonify({
+        "source_version": source_version,
+        "installed_version": installed_version,
+        "bin_present": bin_present,
+        "needs_repair": needs_repair,
+        "reason": reason,
+        "action": action,
+    })
+
+
 @app.route('/logs', methods=['GET'])
 def get_logs():
     """
     Read the last 100 lines of the session log.
-    
+
     THREAT MODEL:
     - Reads from user-writable ~/.mcpinv/session.jsonl
     - JSONL parsing is strict: each line must be valid JSON
     - Malformed lines are logged and skipped (not exposed to client)
-    
+
     ERROR HANDLING:
     - json.JSONDecodeError: Logged; line skipped (not returned to client)
     - FileNotFoundError: Returns empty list (no error)
     - General Exception: Returns HTTP 500 (operation failed)
-    
+
     Returns:
         JSON: List of parsed log entries (last 100 lines)
     """
     if not LOG_PATH.exists():
         return jsonify([])
-    
+
     logs = []
     try:
         with open(LOG_PATH, "r", encoding="utf-8") as f:
-            # Simple tail implementation
             lines = f.readlines()[-100:]
             for line in lines:
                 try:
@@ -86,19 +339,18 @@ def get_logs():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
 @app.route('/status', methods=['GET'])
 def get_status():
     """Real status from Nexus inventory."""
     inventory_path = Path.home() / ".mcpinv" / "inventory.json"
     servers = []
-    
+
     if inventory_path.exists():
         try:
             with open(inventory_path, "r") as f:
                 data = json.load(f)
-                # Map inventory to UI format
                 for s_id, s_data in data.get("servers", {}).items():
-                    # Simple heuristic for online state (can be refined with PID check)
                     servers.append({
                         "id": s_id,
                         "name": s_data.get("name", s_id),
@@ -107,36 +359,30 @@ def get_status():
                     })
         except json.JSONDecodeError as e:
             logger.error(f"JSON parse error: {e}", exc_info=True)
-            pass
 
     def is_running(pattern):
         try:
-            # Simple pgrep check
             result = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
             return result.returncode == 0
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parse error: {e}", exc_info=True)
+        except Exception:
             return False
 
-    # Check for core components
-    # activator/observer/surgeon are CLI tools, so we define 'online' as 'installed'
     bin_dir = Path.home() / ".mcp-tools" / "bin"
-    
-    # Posture: check if watcher has been active in last 60 seconds
+
+    # Watcher posture check
     db_path = Path.home() / ".mcp-tools" / "mcp-server-manager" / "knowledge.db"
     has_watcher = False
     if db_path.exists():
         try:
             conn = sqlite3.connect(db_path)
             c = conn.cursor()
-            c.execute("SELECT COUNT(*) FROM links WHERE categories = 'debug' AND url LIKE 'log://watcher/%'")
-            count = c.fetchone()[0]
-            if count > 0:
-                has_watcher = True
+            c.execute(
+                "SELECT COUNT(*) FROM links WHERE categories = 'debug' AND url LIKE 'log://watcher/%'"
+            )
+            has_watcher = c.fetchone()[0] > 0
             conn.close()
         except OSError as e:
             logger.error(f"OS error: {e}", exc_info=True)
-            pass
 
     return jsonify({
         "activator": "online" if (bin_dir / "mcp-activator").exists() else "missing",
@@ -144,8 +390,9 @@ def get_status():
         "surgeon": "online" if (bin_dir / "mcp-surgeon").exists() else "missing",
         "librarian": "online" if is_running("mcp.py") or is_running("nexus-librarian") else "stopped",
         "posture": "Live Tracking" if has_watcher else "Standard Operation",
-        "servers": servers
+        "servers": servers,
     })
+
 
 @app.route('/artifacts', methods=['GET'])
 def get_artifacts():
@@ -153,65 +400,65 @@ def get_artifacts():
     artifact_dir = Path.home() / ".mcpinv" / "artifacts"
     if not artifact_dir.exists():
         return jsonify([])
-    
+
     results = []
     for f in sorted(artifact_dir.glob("*"), key=os.path.getmtime, reverse=True)[:50]:
         results.append({
             "name": f.name,
             "path": str(f),
             "size": f.stat().st_size,
-            "modified": os.path.getmtime(f)
+            "modified": os.path.getmtime(f),
         })
     return jsonify(results)
+
 
 @app.route('/server/control', methods=['POST'])
 def control_server():
     """
     Start or stop an MCP server by ID.
-    
+
     THREAT MODEL:
     - Receives untrusted server ID and action from HTTP POST
     - Command string comes from inventory file (trusted)
     - Uses subprocess.Popen() with list-based argv (no shell injection)
     - Process signals are sent via os.kill() with SIGTERM (safe termination)
-    
+
     SECURITY ASSUMPTIONS:
     - Server ID is looked up in trusted inventory file first
     - Command is parsed as argv list (not passed to shell)
     - Process termination uses SIGTERM (not SIGKILL; allows graceful shutdown)
     - Runtime PIDs are stored in user-writable file (checked on each call)
-    
+
     ERROR HANDLING:
     - FileNotFoundError: Returns 404 if inventory/runtime not found
     - json.JSONDecodeError: Returns 500 (error reading files)
     - ProcessLookupError: Returns 404 if PID no longer exists
     - Subprocess exceptions: Caught and returned as 500 error
-    
+
     Request JSON:
         {"id": "server-name", "action": "start" or "stop"}
-        
+
     Returns:
         JSON: {"status": "starting"|"stopped", "pid": <int>} or error dict
     """
     from flask import request
     data = request.json
     s_id = data.get("id")
-    action = data.get("action") # "start" or "stop"
+    action = data.get("action")
     runtime_path = Path.home() / ".mcpinv" / "runtime.json"
-    
+
     inventory_path = Path.home() / ".mcpinv" / "inventory.json"
     if not inventory_path.exists():
         return jsonify({"error": "No inventory found"}), 404
-    
+
     try:
         with open(inventory_path, "r") as f:
             inventory = json.load(f)
-        
+
         server = inventory.get("servers", {}).get(s_id)
         if not server:
             return jsonify({"error": "Server not found"}), 404
-        
-        # Load running pids
+
         pids = {}
         if runtime_path.exists():
             with open(runtime_path, "r") as f:
@@ -221,24 +468,21 @@ def control_server():
             cmd = server.get("command")
             if not cmd:
                 return jsonify({"error": "No start command defined for this server"}), 400
-            
-            import subprocess
-            # SECURITY: avoid shell=True. Treat inventory commands as argv, not shell strings.
+
+            # SECURITY: avoid shell=True. Treat inventory commands as argv.
             argv = shlex.split(cmd) if isinstance(cmd, str) else cmd
             if not isinstance(argv, list) or not argv:
                 return jsonify({"error": "Invalid start command"}), 400
+
             proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             pids[s_id] = proc.pid
-            
             with open(runtime_path, "w") as f:
                 json.dump(pids, f)
-                
             return jsonify({"status": "starting", "pid": proc.pid})
-            
+
         elif action == "stop":
             pid = pids.get(s_id)
             if pid:
-                import signal
                 try:
                     os.kill(pid, signal.SIGTERM)
                     del pids[s_id]
@@ -248,14 +492,51 @@ def control_server():
                 except ProcessLookupError:
                     return jsonify({"status": "error", "message": "Process not found"}), 404
             return jsonify({"status": "error", "message": "No PID recorded for this server"}), 400
-            
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="gui_bridge",
+        description="Nexus GUI Bridge — Flask API for MCP dashboard.",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--daemon", action="store_true",
+        help="Start the GUI Bridge as a background daemon (detached from terminal).",
+    )
+    mode.add_argument(
+        "--stop", action="store_true",
+        help="Stop the running GUI Bridge daemon.",
+    )
+    mode.add_argument(
+        "--status", action="store_true",
+        help="Print daemon status (exits 0=running, 1=stopped).",
+    )
+    ns = parser.parse_args()
+
+    if ns.stop:
+        cmd_stop()
+    elif ns.status:
+        cmd_status()
+    elif ns.daemon:
+        print("Starting GUI Bridge in daemon mode...")
+        cmd_start_daemon()
+        # cmd_start_daemon() only returns inside the daemonized child process,
+        # which then runs Flask. The original parent process exits via sys.exit(0)
+        # in _daemonize(). This line is therefore unreachable in the parent.
+    else:
+        # Foreground mode (default — unchanged from prior behaviour).
+        host = os.environ.get("NEXUS_BIND", "127.0.0.1")
+        print(f"Starting GUI Bridge on http://{host}:5001 (foreground)...")
+        app.run(host=host, port=5001, debug=False)
+
+
 if __name__ == '__main__':
-    # Running on 5001 to avoid conflict with standard Streamlit/Vite ports
-    print("🚀 Starting GUI Bridge on port 5001...")
-    # debug=True causes reloader issues in some environments.
-    # SECURITY: bind to loopback by default; allow override for special dev setups.
-    host = os.environ.get("NEXUS_BIND", "127.0.0.1")
-    app.run(host=host, port=5001, debug=False)
+    main()

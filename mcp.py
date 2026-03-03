@@ -835,8 +835,8 @@ class MCPServer:
                 
                 request = json.loads(line)
                 response = self.handle_request(request)
-                
-                if response:
+
+                if response is not None:
                     print(json.dumps(response), flush=True)
                     
             except json.JSONDecodeError:
@@ -852,10 +852,15 @@ class MCPServer:
         method = request.get("method")
         params = request.get("params", {})
         msg_id = request.get("id")
-        
+
+        # MCP Protocol Rule: Notifications have no id field.
+        # Never send a response to a notification — return None immediately.
+        if msg_id is None:
+            return None
+
         result = None
         error = None
-        
+
         try:
             if method == "initialize":
                 result = {
