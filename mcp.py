@@ -39,7 +39,7 @@ import os
 import re
 import time
 import shlex
-__version__ = "3.4.0"
+__version__ = "3.5.0"
 
 try:
     from atp_sandbox import ATPSandbox

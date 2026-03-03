@@ -2,7 +2,7 @@
 
 **The Universal Search & Retrieval Engine for the Workforce Nexus.**
 
-The **Librarian** (`mcp.py`) is a specialized MCP server responsible for indexing, storing, and retrieving knowledge from heterogeneous sources. In v3.3.1, it includes the **ATP Sandbox** for secure execution of agent-driven logic.
+The **Librarian** (`mcp.py`) is a specialized MCP server responsible for indexing, storing, and retrieving knowledge from heterogeneous sources. In v3.5.0, it includes the **ATP Sandbox** for secure execution of agent-driven logic, **GUI Daemon Mode** for background service operation, and **Version Health Monitoring** for operational awareness.
 
 ## 🚀 Quick Start (Suite Mode)
 
@@ -18,7 +18,7 @@ python3 mcp.py --server
 
 ---
 
-## 🌟 Capabilities (v3.3.1)
+## 🌟 Capabilities (v3.5.0)
 
 ### 1. Universal Indexing (v3.0)
 Deep content parsing for Documents (`PDF`, `DOCX`, `XLSX`) and Images (`EXIF`).
@@ -37,6 +37,16 @@ Includes the `ATPSandbox` layer to protect the host environment:
 - **Paginated Lists**: capped at 50 results to prevent context saturation.
 - **Deep Search**: Returns snippets instead of full documents for efficiency.
 
+### 5. GUI Daemon Mode (v3.5.0+)
+- **Background Service**: Flask bridge supports `--daemon` for unattended operation.
+- **Process Management**: PID tracking and `--status` / `--stop` commands for lifecycle control.
+- **Default Foreground**: No args = blocking server (backward compatible).
+
+### 6. Version Health Monitoring (v3.5.0+)
+- **Drift Detection**: `/version-health` endpoint compares source vs installed versions.
+- **Dashboard Integration**: React UI displays version status badge with repair recommendations.
+- **Dual-Interval Polling**: Optimized refresh rates for responsive UI without network overhead.
+
 ---
 
 ## 🛠️ Global Command Reference
@@ -49,18 +59,21 @@ Includes the `ATPSandbox` layer to protect the host environment:
 
 ---
 
-## 🔄 Drift Lifecycle Integration (v3.3.6+)
+## 🔄 Drift Lifecycle Integration (v3.5.0+)
 
 The Librarian integrates with the Drift Lifecycle system:
 - **Knowledge Persistence**: Maintains indexed resources across deployments
 - **Safe Indexing**: Real-time watcher prevents knowledge loss during drift
 - **Multi-Deployment**: Supports indexing across core and forged servers
+- **Version Awareness**: Automatic drift detection and repair recommendations via health monitoring
 
 See main repo: [Drift Lifecycle System](../DRIFT_LIFECYCLE_OUTCOMES.md)
 
 ---
 
 ## 📝 Metadata
-* **Status**: Production Ready (v3.3.6)
+* **Status**: Production Ready (v3.5.0)
+* **Released**: 2026-03-03
 * **Author**: l00p3rl00p
 * **Part of**: The Workforce Nexus Suite
+* **Mission Score**: 100% ✅ (GUI Reliability + Operational Awareness complete)

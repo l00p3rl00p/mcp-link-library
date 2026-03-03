@@ -1,3 +1,24 @@
+# Changelog - MCP Librarian (mcp-link-library)
+
+## [3.5.0] - 2026-03-03
+
+### Added
+- **GUI Daemon Mode**: Flask bridge (`gui_bridge.py`) now supports `--daemon`, `--status`, and `--stop` CLI commands for background service operation with POSIX double-fork daemonization.
+- **PID Management**: Automatic PID file tracking (`~/.mcpinv/gui_bridge.pid`) with stale process detection and cleanup.
+- **Version Health Monitoring**: New `/version-health` endpoint monitors source vs installed version drift, binary presence, and generates repair recommendations.
+- **Dashboard Integration**: React dashboard now displays version health badge showing either current version or "⚠ Repair Needed" status with actionable tooltip.
+- **Dual-Interval Polling**: Dashboard optimized with separate polling intervals (2s for core data, 30s for slow-changing version health).
+
+### Changed
+- Bumped version `3.4.0 → 3.5.0`.
+- Version health endpoint returns 6-key JSON schema for comprehensive system diagnostics.
+
+### Improved
+- GUI now remains responsive even during background service transitions (daemon ↔ foreground).
+- Version drift detection respects GR-NO-REPAIR-FALSE-POSITIVE guardrail (absent mirror ≠ repair needed).
+
+---
+
 ## [3.3.6] - 2026-02-27 (Drift Lifecycle Integration)
 
 ### Added
@@ -6,8 +27,6 @@
 - Hash-based state management compatibility
 
 ---
-
-# Changelog - MCP Librarian (mcp-link-library)
 
 ## [3.4.0] - 2026-02-26
 
