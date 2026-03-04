@@ -131,22 +131,25 @@ class SecureMcpLibrary:
     app_dir: Path
 
     def __init__(self, db_path: str = None, *, allow_http: bool = False):
-        # Use a standard location in ~/.mcp-tools/mcp-server-manager (or override).
+        # Stable data dir: ~/.mcp-tools/mcpinv/librarian/
+        # Lives inside the ONE portable root. Never inside a git/code directory.
+        # Survives every upgrade, repair, and reinstall.
         self.allow_http = bool(allow_http)
 
         override_home = os.environ.get("NEXUS_LIBRARIAN_HOME") or os.environ.get("NEXUS_APP_HOME")
         if override_home:
             self.app_dir = Path(override_home).expanduser().resolve()
         elif sys.platform == "win32":
-            self.app_dir = Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".mcp-tools" / "mcp-server-manager"
+            _nexus_home = Path(os.environ.get("NEXUS_HOME", str(Path(os.environ.get("USERPROFILE", str(Path.home()))) / ".mcp-tools")))
+            self.app_dir = _nexus_home / "mcpinv" / "librarian"
         else:
-            self.app_dir = Path.home() / ".mcp-tools" / "mcp-server-manager"
+            _nexus_home = Path(os.environ.get("NEXUS_HOME", str(Path.home() / ".mcp-tools")))
+            self.app_dir = _nexus_home / "mcpinv" / "librarian"
 
         # If a specific db_path is provided, still keep an app_dir for logs/artifacts.
         if db_path == ":memory:":
             try:
                 import tempfile as _tempfile
-
                 self.app_dir = Path(_tempfile.gettempdir()) / "mcp-link-library"
             except Exception:
                 pass
@@ -158,7 +161,23 @@ class SecureMcpLibrary:
 
         if db_path is None:
             db_path = str(self.app_dir / "knowledge.db")
-        
+            # One-time migration: move DB from old locations
+            _new_db = Path(db_path)
+            for _old_db in [
+                Path.home() / ".mcpinv" / "librarian" / "knowledge.db",
+                Path.home() / ".mcp-tools" / "mcp-server-manager" / "knowledge.db",
+            ]:
+                if _old_db.exists() and not _new_db.exists() and _old_db != _new_db:
+                    try:
+                        import shutil as _shutil
+                        _new_db.parent.mkdir(parents=True, exist_ok=True)
+                        _shutil.copy2(str(_old_db), str(_new_db))
+                        _old_db.rename(_old_db.with_suffix(".db.migrated"))
+                        print(f"📦 Migrated librarian DB: {_old_db} → {_new_db}")
+                    except Exception as _me:
+                        print(f"⚠️  DB migration skipped: {_me}")
+                    break
+
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self._create_secure_tables()
@@ -191,6 +210,12 @@ class SecureMcpLibrary:
         # Migrate existing DBs: add stack column if absent
         try:
             self.cursor.execute("ALTER TABLE links ADD COLUMN stack TEXT DEFAULT 'default'")
+            self.conn.commit()
+        except Exception:
+            pass  # Column already exists
+        # Migrate existing DBs: add is_active column if absent (DU-v3.4.1-03)
+        try:
+            self.cursor.execute("ALTER TABLE links ADD COLUMN is_active BOOLEAN DEFAULT 1")
             self.conn.commit()
         except Exception:
             pass  # Column already exists
