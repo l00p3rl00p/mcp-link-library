@@ -1489,7 +1489,7 @@ def main():
     args = parser.parse_args()
     
     # DU-V3.3.7: Unified status — all subunits shown by default; no extra flag = full fleet view.
-    _NEXUS_VERSION = "3.3.7"
+    _NEXUS_VERSION = "3.4.0"
     _BIN_DIR = Path.home() / ".mcp-tools" / "bin"
     _SUBUNITS = [
         ("Observer",  "mcp-observer"),

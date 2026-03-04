@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-link-library"
+version = "3.3.6"
+requires-python = ">=3.10"
+dependencies = ["requests", "beautifulsoup4"]
+
+[project.scripts]
+mcp-librarian = "mcp:main"
+mcp-lib-verify = "verify:verify_library"
