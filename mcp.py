@@ -32,6 +32,7 @@ except ImportError:
     PollingObserver = None
     FileSystemEventHandler = None
 import json
+import logging
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import datetime
@@ -40,6 +41,48 @@ import re
 import time
 import shlex
 __version__ = "3.5.0"
+
+logger = logging.getLogger(__name__)
+
+# Supply-chain hardening: only packages in this set may be installed via
+# update_dependencies().  Any name not present is rejected before pip runs.
+ALLOWED_PACKAGES: frozenset = frozenset({
+    # HTTP / networking
+    "requests",
+    "httpx",
+    "aiohttp",
+    "urllib3",
+    "certifi",
+    # Web frameworks
+    "flask",
+    "fastapi",
+    "uvicorn",
+    "starlette",
+    # Data / science
+    "numpy",
+    "pandas",
+    "scipy",
+    "matplotlib",
+    "pillow",
+    # Document / file handling
+    "pypdf",
+    "openpyxl",
+    "python-docx",
+    # Utility / tooling
+    "pydantic",
+    "click",
+    "rich",
+    "tqdm",
+    "python-dotenv",
+    # Filesystem watching
+    "watchdog",
+    # Database / ORM
+    "sqlalchemy",
+    "psycopg2-binary",
+    # Testing
+    "pytest",
+    "pytest-asyncio",
+})
 
 try:
     from atp_sandbox import ATPSandbox
@@ -1176,24 +1219,57 @@ class MCPServer:
                         "content": [{"type": "text", "text": "\n".join(status)}]
                     }
                 elif name == "update_dependencies":
+                    # update_dependencies(packages: str)
+                    # Installs one or more pip packages from the ALLOWED_PACKAGES
+                    # whitelist.  Packages not in the whitelist are rejected with a
+                    # ValueError before pip is ever invoked, preventing supply-chain
+                    # attacks via arbitrary PyPI package names.
+                    #
+                    # Allowed packages (case-insensitive, normalised):
+                    #   requests, httpx, aiohttp, urllib3, certifi,
+                    #   flask, fastapi, uvicorn, starlette,
+                    #   numpy, pandas, scipy, matplotlib, pillow,
+                    #   pypdf, openpyxl, python-docx,
+                    #   pydantic, click, rich, tqdm, python-dotenv,
+                    #   watchdog, sqlalchemy, psycopg2-binary,
+                    #   pytest, pytest-asyncio
                     pkgs = args.get("packages", "")
                     if not pkgs:
-                         raise ValueError("No packages specified")
+                        raise ValueError("No packages specified")
+
+                    # Normalise: pip treats hyphens and underscores as equivalent;
+                    # lowercase for case-insensitive comparison.
+                    requested = pkgs.split()
+                    normalised = [p.lower().replace("_", "-") for p in requested]
+                    allowed_norm = frozenset(
+                        p.lower().replace("_", "-") for p in ALLOWED_PACKAGES
+                    )
+                    rejected = [
+                        orig for orig, norm in zip(requested, normalised)
+                        if norm not in allowed_norm
+                    ]
+                    if rejected:
+                        raise ValueError(
+                            f"Package installation rejected — not on approved whitelist: "
+                            f"{', '.join(rejected)}. "
+                            f"Contact the project maintainer to add a package to ALLOWED_PACKAGES."
+                        )
+
                     import subprocess
                     try:
-                        cmd = [sys.executable, "-m", "pip", "install"] + pkgs.split()
+                        cmd = [sys.executable, "-m", "pip", "install"] + requested
                         subprocess.run(cmd, check=True, capture_output=True)
                         result = {
-                            "content": [{"type": "text", "text": f"✅ Successfully installed: {pkgs}"}]
+                            "content": [{"type": "text", "text": f"Successfully installed: {pkgs}"}]
                         }
                     except subprocess.CalledProcessError as e:
                         result = {
-                            "content": [{"type": "text", "text": f"❌ Install failed: {e.stderr.decode()}"}],
+                            "content": [{"type": "text", "text": f"Install failed: {e.stderr.decode()}"}],
                             "isError": True
                         }
                     except Exception as e:
                         result = {
-                            "content": [{"type": "text", "text": f"❌ Install failed: {e}"}],
+                            "content": [{"type": "text", "text": f"Install failed: {str(e)}"}],
                             "isError": True
                         }
                 elif name == "start_watcher":
@@ -1407,9 +1483,60 @@ def main():
     parser.add_argument('--prepopulate-docs', help="Prepopulate docs for a directory")
     parser.add_argument('--json', action='store_true', help="Output in raw JSON format for agent-side processing")
     parser.add_argument('--allow-http', action='store_true', help="Allow adding http:// URLs (NOT recommended).")
-    
+    parser.add_argument('--version', action='store_true', help="Print Nexus version and exit")
+    parser.add_argument('--status', action='store_true', help="Show health of all installed Nexus subunits and exit")
+
     args = parser.parse_args()
     
+    # DU-V3.3.7: Unified status — all subunits shown by default; no extra flag = full fleet view.
+    _NEXUS_VERSION = "3.3.7"
+    _BIN_DIR = Path.home() / ".mcp-tools" / "bin"
+    _SUBUNITS = [
+        ("Observer",  "mcp-observer"),
+        ("Forger",    "mcp-forger"),
+        ("Librarian", "nexus-librarian"),
+        ("Activator", "mcp-activator"),
+    ]
+
+    if args.version:
+        print(f"Nexus v{_NEXUS_VERSION}")
+        return
+
+    if args.status:
+        import subprocess as _sp
+        print(f"Nexus v{_NEXUS_VERSION}")
+        print()
+        rows = []
+        for display_name, binary_name in _SUBUNITS:
+            path = _BIN_DIR / binary_name
+            installed = path.exists()
+            alive = False
+            if installed:
+                try:
+                    r = _sp.run([str(path), "--version"], stdout=_sp.PIPE, stderr=_sp.PIPE, timeout=5, shell=False)
+                    alive = r.returncode == 0
+                except Exception:
+                    alive = False
+            if alive:
+                status = "\u2705 installed"
+                route_info = f"(routed via: {binary_name})"
+            elif installed:
+                status = "\u26a0\ufe0f  installed (unresponsive)"
+                route_info = f"(binary exists: {path})"
+            else:
+                status = "\u274c not installed"
+                route_info = ""
+            rows.append((display_name, status, route_info))
+        max_name = max(len(r[0]) for r in rows)
+        max_status = max(len(r[1]) for r in rows)
+        for i, (name, status, route_info) in enumerate(rows):
+            connector = "\u2514\u2500" if i == len(rows) - 1 else "\u251c\u2500"
+            print(f"{connector} {name:<{max_name}}  {status:<{max_status}}  {route_info}".rstrip())
+        print()
+        alive_count = sum(1 for r in rows if "\u2705" in r[1])
+        print(f"  {alive_count}/{len(rows)} subunits operational")
+        return
+
     if args.bootstrap:
         sys.exit(cmd_bootstrap())
 
