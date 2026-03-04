@@ -374,7 +374,7 @@ class SecureMcpLibrary:
             result.append({"category": cat, "order": 2, "count": cnt})
         return result
 
-    def update_link(self, link_id: int, url: str = None, categories: List[str] = None, active: bool = None):
+    def update_link(self, link_id: int, url: str = None, categories: List[str] = None, active: bool = None, stack: str = None):
         """Update an existing link."""
         updates = []
         params = []
@@ -387,6 +387,9 @@ class SecureMcpLibrary:
         if active is not None:
             updates.append("is_active = ?")
             params.append(1 if active else 0)
+        if stack is not None:
+            updates.append("stack = ?")
+            params.append(stack)
             
         if not updates:
             return False
@@ -1495,7 +1498,7 @@ def main():
     parser.add_argument('--delete', type=int, help="Delete link by ID")
     parser.add_argument('--open', type=int, help="Open resource by ID using OS default")
     parser.add_argument('--edit', type=int, help="Edit resource by ID using default editor")
-    parser.add_argument('--update', type=int, help="Update link ID (requires --url or --categories)")
+    parser.add_argument('--update', type=int, help="Update link ID (requires --url, --categories, or --stack)")
     parser.add_argument('--url', help="New URL for update")
     parser.add_argument('--activate', type=int, help="Activate link by ID")
     parser.add_argument('--deactivate', type=int, help="Deactivate link by ID")
@@ -1660,10 +1663,10 @@ def main():
             print(f"❌ Resource {args.edit} is not an editable local file.")
         
     elif args.update:
-        if library.update_link(args.update, url=args.url, categories=args.categories):
+        if library.update_link(args.update, url=args.url, categories=args.categories, stack=getattr(args, 'stack', None)):
             print(f"✨ Updated link {args.update}")
         else:
-            print("No updates provided. Use --url or --categories.")
+            print("No updates provided. Use --url, --categories, or --stack.")
             
     elif args.activate:
         library.update_link(args.activate, active=True)
