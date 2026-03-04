@@ -13,7 +13,7 @@ def _home() -> Path:
 
 
 def devlog_dir() -> Path:
-    return _home() / ".mcpinv" / "devlogs"
+    return Path(os.environ.get("NEXUS_HOME", str(_home() / ".mcp-tools"))) / "mcpinv" / "devlogs"
 
 
 def prune_devlogs(days: int = 90) -> None:

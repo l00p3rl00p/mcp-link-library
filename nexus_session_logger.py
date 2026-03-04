@@ -11,7 +11,9 @@ class NexusSessionLogger:
     """
     
     def __init__(self, log_name: str = "session.jsonl", max_size_mb: int = 5):
-        self.log_path = Path.home() / ".mcpinv" / log_name
+        import os
+        nexus_home = Path(os.environ.get("NEXUS_HOME", str(Path.home() / ".mcp-tools")))
+        self.log_path = nexus_home / "mcpinv" / log_name
         self.max_size = max_size_mb * 1024 * 1024
         self._enabled = True
         try:

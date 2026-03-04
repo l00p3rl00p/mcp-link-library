@@ -1,8 +1,10 @@
-# MCP Librarian: The Knowledge Indexer (mcp-link-library)
+# MCP Librarian: The Knowledge Hub (mcp-link-library)
 
 **The Universal Search & Retrieval Engine for the Workforce Nexus.**
 
-The **Librarian** (`mcp.py`) is a specialized MCP server responsible for indexing, storing, and retrieving knowledge from heterogeneous sources. In v3.5.0, it includes the **ATP Sandbox** for secure execution of agent-driven logic, **GUI Daemon Mode** for background service operation, and **Version Health Monitoring** for operational awareness.
+The **Librarian** (`mcp.py`) is a specialized MCP server responsible for indexing, storing, and retrieving knowledge. It features an **ATP Sandbox** for secure execution and a **Named Stacks** context system for organizing knowledge by project or theme.
+
+---
 
 ## 🚀 Quick Start (Suite Mode)
 
@@ -18,34 +20,25 @@ python3 mcp.py --server
 
 ---
 
-## 🌟 Capabilities (v3.5.0)
+## 🌟 Capabilities
 
-### 1. Universal Indexing (v3.0)
-Deep content parsing for Documents (`PDF`, `DOCX`, `XLSX`) and Images (`EXIF`).
+### 1. Universal Indexing & Parsing
+Deep content parsing for Documents (`PDF`, `DOCX`, `XLSX`) and Images.
 - **Optimization**: Server-side extraction returns only relevant JSON paths, reducing token bloat by 80%.
 
-### 2. ATP Sandbox & Security
-Includes the `ATPSandbox` layer to protect the host environment:
-- **AST Guards**: Blocks `type()`, `getattr()`, and class-escape vectors.
-- **Portability**: Uses deterministic wrappers to prevent infrastructure hallucinations.
+### 2. Named Stacks (Knowledge Contexts)
+Organize your research into isolated, named contexts.
+- **Project Isolation**: Group resources into "stacks" (e.g., 'physics-research', 'legal-docs').
+- **Contextual Search**: Query specific stacks to prevent cross-contamination of results.
 
-### 3. Self-Healing & Diagnosis
-- **`check_health`**: Audits Python dependencies and database integrity.
-- **`update_dependencies`**: One-click recovery via the Nexus Dashboard.
+### 3. ATP Sandbox & Security
+The `ATPSandbox` layer protects the host environment during agent-driven logic execution.
+- **AST Guards**: Blocks `type()`, `getattr()`, and class-escape vectors.
+- **Safety Protocol**: Mandates strictly deterministic processing of agent logic.
 
 ### 4. Zero-Token Filtering
-- **Paginated Lists**: capped at 50 results to prevent context saturation.
-- **Deep Search**: Returns snippets instead of full documents for efficiency.
-
-### 5. GUI Daemon Mode (v3.5.0+)
-- **Background Service**: Flask bridge supports `--daemon` for unattended operation.
-- **Process Management**: PID tracking and `--status` / `--stop` commands for lifecycle control.
-- **Default Foreground**: No args = blocking server (backward compatible).
-
-### 6. Version Health Monitoring (v3.5.0+)
-- **Drift Detection**: `/version-health` endpoint compares source vs installed versions.
-- **Dashboard Integration**: React UI displays version status badge with repair recommendations.
-- **Dual-Interval Polling**: Optimized refresh rates for responsive UI without network overhead.
+- **Paginated Discovery**: Lists and categories are capped to prevent context saturation.
+- **Deep Search**: Returns intelligent snippets instead of full documents.
 
 ---
 
@@ -56,24 +49,20 @@ Includes the `ATPSandbox` layer to protect the host environment:
 | `mcp-librarian --search X` | Search the knowledge base for X. |
 | `mcp-librarian --add Y` | Index a new URL or local file. |
 | `mcp-librarian --list` | List all indexed resources (summarized). |
+| `mcp-librarian --stacks` | List all named knowledge contexts. |
 
 ---
 
-## 🔄 Drift Lifecycle Integration (v3.5.0+)
+## 🔄 Drift Lifecycle Integration
 
 The Librarian integrates with the Drift Lifecycle system:
-- **Knowledge Persistence**: Maintains indexed resources across deployments
-- **Safe Indexing**: Real-time watcher prevents knowledge loss during drift
-- **Multi-Deployment**: Supports indexing across core and forged servers
-- **Version Awareness**: Automatic drift detection and repair recommendations via health monitoring
-
-See main repo: [Drift Lifecycle System](../DRIFT_LIFECYCLE_OUTCOMES.md)
+- **Persistence**: Maintains indexed resources (SQLite) across all suite deployments.
+- **Auto-Watcher**: Real-time re-indexing of documents at server startup.
+- **Version Awareness**: Unified health monitoring via the Nexus Dashboard.
 
 ---
 
 ## 📝 Metadata
-* **Status**: Production Ready (v3.5.0)
-* **Released**: 2026-03-03
-* **Author**: l00p3rl00p
+* **Status**: 🟢 Production Ready (v3.4.2)
 * **Part of**: The Workforce Nexus Suite
-* **Mission Score**: 100% ✅ (GUI Reliability + Operational Awareness complete)
+* **Mission Confidence**: 100% ✅
