@@ -39,7 +39,7 @@ A diagnostic subsystem that audits the environment's health:
 ### 5. GUI Bridge Daemon (`gui_bridge.py`)
 Flask-based REST API for dashboard interaction and MCP server lifecycle management.
 * **Foreground Mode** (default): `python3 gui_bridge.py` — traditional blocking HTTP server.
-* **Daemon Mode** (v6.0): `python3 gui_bridge.py --daemon` — POSIX double-fork detachment with PID file (`~/.mcpinv/gui_bridge.pid`).
+* **Daemon Mode** (v6.0): `python3 gui_bridge.py --daemon` — POSIX double-fork detachment with PID file (`~/.mcp-tools/mcpinv/gui_bridge.pid`).
 * **Status Command** (v6.0): `python3 gui_bridge.py --status` — exit code 0 (running) or 1 (stopped).
 * **Stop Command** (v6.0): `python3 gui_bridge.py --stop` — graceful SIGTERM termination.
 * **Version Health Endpoint** (v6.0): `/version-health` — monitors source vs installed version drift, returns `needs_repair` flag.
@@ -49,8 +49,8 @@ Flask-based REST API for dashboard interaction and MCP server lifecycle manageme
 React + TypeScript SPA frontend for real-time Nexus observability.
 * **Dashboard Tab**: Displays managed MCP server inventory with interactive "Start"/"Stop" buttons.
 * **Librarian Tab**: "Artifact Explorer" table showing indexed files with disk paths and sizes.
-* **Terminal Tab**: Master command log (JSONL from `~/.mcpinv/session.jsonl`) with live updates.
-* **Version Health Badge** (v6.0): Rendered in header, shows "v3.4.0" (green) or "⚠️ Repair Needed" (red) with tooltip containing action command.
+* **Terminal Tab**: Master command log (JSONL from `~/.mcp-tools/mcpinv/session.jsonl`) with live updates.
+* **Version Health Badge** (v6.0): Rendered in header, shows "v3.4.3" (green) or "⚠️ Repair Needed" (red) with tooltip containing action command.
 * **Polling Strategy**: Core data (logs, status) every 2s; version health every 30s (slow-changing).
 
 ---
@@ -70,7 +70,7 @@ Exposes heuristic character counting to the Dashboard, allowing the user to see 
 * **Latest Release**: 2026-03-03
 * **Key Milestones**:
   - v3.3.5 (2026-02-25): Auto-watcher launch (GAP-R3 closed)
-  - v3.4.0 (2026-02-26): Named stacks for knowledge organization
+  - v3.4.3 (2026-02-26): Named stacks for knowledge organization
   - v6.0 (2026-03-03): GUI reliability (daemon mode) + operational awareness (version health)
 * **Author**: l00p3rl00p
 * **Part of**: The Workforce Nexus Suite

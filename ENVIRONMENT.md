@@ -19,7 +19,7 @@ The suite uses predictable, user-owned paths:
 * Nexus home: `~/.mcp-tools`
 * Tools bin: `~/.mcp-tools/bin`
 * Shared venv (optional): `~/.mcp-tools/.venv`
-* Shared state + devlogs: `~/.mcpinv/`
+* Shared state + devlogs: `~/.mcp-tools/mcpinv/`
 
 ---
 
@@ -27,7 +27,7 @@ The suite uses predictable, user-owned paths:
 
 To reduce risk and surprise:
 * Tools do **not** crawl your filesystem or walk up directory trees to “find” workspaces.
-* Uninstall operations only touch **approved central locations** (e.g. `~/.mcp-tools`, `~/.mcpinv`, and the Nexus PATH block).
+* Uninstall operations only touch **approved central locations** (e.g. `~/.mcp-tools`, `~/.mcp-tools/mcpinv`, and the Nexus PATH block).
 * If you need to clean a git workspace, the tools print manual cleanup commands instead of deleting workspace files.
 
 ---
@@ -35,7 +35,7 @@ To reduce risk and surprise:
 ## 🧾 Devlogs (Shared Diagnostics)
 
 Shared JSONL devlogs live under:
-* `~/.mcpinv/devlogs/nexus-YYYY-MM-DD.jsonl`
+* `~/.mcp-tools/mcpinv/devlogs/nexus-YYYY-MM-DD.jsonl`
 
 Behavior:
 * Entries are appended as actions run.
