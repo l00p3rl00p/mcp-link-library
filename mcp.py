@@ -295,6 +295,21 @@ class SecureMcpLibrary:
              except OSError as e:
                  logger.error(f"OS error: {e}", exc_info=True)
                  pass
+        elif validated_url.startswith(("http://", "https://")):
+            # NEW: Remote content indexing for web resources
+            try:
+                import requests
+                from bs4 import BeautifulSoup
+                resp = requests.get(validated_url, timeout=10)
+                if resp.ok:
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    # Remove script and style elements
+                    for script in soup(["script", "style"]):
+                        script.decompose()
+                    content = soup.get_text(separator=' ', strip=True)
+            except Exception as e:
+                logger.error(f"Remote indexing failed for {validated_url}: {e}")
+                content = None
 
         self.cursor.execute('''
             INSERT OR REPLACE INTO links
