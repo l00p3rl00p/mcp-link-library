@@ -333,7 +333,7 @@ def get_logs():
                 try:
                     logs.append(json.loads(line))
                 except json.JSONDecodeError as e:
-                    logger.error(f"JSON parse error: {e}", exc_info=True)
+                    logger.error(f"JSON parse error while reading {LOG_PATH}: {e}", exc_info=True)
                     continue
         return jsonify(logs)
     except Exception as e:
@@ -364,7 +364,8 @@ def get_status():
         try:
             result = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True)
             return result.returncode == 0
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error checking process '{pattern}': {e}", exc_info=True)
             return False
 
     bin_dir = Path.home() / ".mcp-tools" / "bin"
@@ -382,7 +383,8 @@ def get_status():
             has_watcher = c.fetchone()[0] > 0
             conn.close()
         except OSError as e:
-            logger.error(f"OS error: {e}", exc_info=True)
+            logger.error(f"OS error when checking watcher posture: {e}", exc_info=True)
+            pass
 
     return jsonify({
         "activator": "online" if (bin_dir / "mcp-activator").exists() else "missing",
@@ -469,12 +471,20 @@ def control_server():
             if not cmd:
                 return jsonify({"error": "No start command defined for this server"}), 400
 
-            # SECURITY: avoid shell=True. Treat inventory commands as argv.
             argv = shlex.split(cmd) if isinstance(cmd, str) else cmd
             if not isinstance(argv, list) or not argv:
                 return jsonify({"error": "Invalid start command"}), 400
 
-            proc = subprocess.Popen(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                proc = subprocess.Popen(
+                    argv,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+            except OSError as e:
+                logger.error(f"Unable to start server '{s_id}': {e}", exc_info=True)
+                return jsonify({"error": "Failed to start server", "details": str(e)}), 500
             pids[s_id] = proc.pid
             with open(runtime_path, "w") as f:
                 json.dump(pids, f)

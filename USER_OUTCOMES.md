@@ -12,12 +12,21 @@ This repo-level `USER_OUTCOMES.md` is subordinate to the canonical [Workforce Ne
 
 The mission is to empower users and agents with a persistent, searchable 'Source of Truth' for all project-related knowledge. By indexing files, URLs, and repositories into an ATP-hardened, token-optimized library, it enables industrial-speed retrieval and zero-friction resource linking, ensuring the ecosystem's memory is always accessible and secure.
 
+### 🏛 Core Mission Statement (Agent View)
+> "The mission is to empower ANY USER of ANY TECHNICAL SKILL LEVEL to transform any discovered git repositories, local files, or web content into MCP servers. These MCP servers use token-optimized, Agent Tool Protocol (ATP)-wrapped execution. The system features a 'Nexus' GUI for zero-friction monitoring, maintenance, and upgrades. It prioritizes low friction use and token efficiency in all architectural suggestions."
+
 ### The Rule of Ones: The LIBRARIAN System Architecture
 The Nexus Librarian serves as the central cognitive memory of the ecosystem, anchored in:
 - **One Install Path:** Deployed as a core, high-availability service within the Unified Nexus.
 - **One Entry Point:** Unified access via the `nexus-librarian` MCP server tools and the "Librarian" tab in the Nexus Commander GUI.
 - **One Status:** Clear visibility into index health, watcher status, and resource counts.
 - **One Log:** Comprehensive indexing logs and sub-agent execution trails (ATP logs).
+
+---
+
+## ⚡ Quick Summary
+* **Mission Statement**: To provide a "Just Works" installation experience that creates zero-leak, isolated environments allowing agents to replicate the packager stack without friction.
+
 
 ---
 
@@ -75,9 +84,15 @@ As a user, I want:
 
 Status Update (2026-03-03): **COMPLETED** ✅
 
-*   **GUI Reliability (Target 95%+)**: ✅ COMPLETE — `gui_bridge.py --daemon` transitions GUI from blocking to background service with full PID management (`--status`, `--stop` commands implemented).
+*   **GUI Reliability (Target 95%+)**: ✅ COMPLETE — `gui_bridge.py --daemon` transitions GUI from blocking to background service with full PID management (`--status`, `--stop` commands implemented`).
 *   **Librarian Synergy**: ✅ COMPLETE (v3.3.5, 2026-02-25) — Auto-watcher launches at server startup, indexes `documents/` in real-time.
 *   **Operational Awareness**: ✅ COMPLETE — `/version-health` endpoint monitors source vs installed version; dashboard badge displays "⚠️ Repair Needed" with actionable command tooltip.
+
+### Previous roadmap targets (for reference)
+*   **GUI Reliability (Target 95%+)**: Transition GUI from a blocking process to a background service with PID management.
+*   **Librarian Synergy**: Implement a dynamic watcher so the Librarian indexes changes in real-time, not just on installation.
+*   **Operational Awareness**: Add "version health" checks to the GUI dashboard to visually signal when a `--repair` is required.
+
 
 ### 2026-02-11 Alignment Update
 * **Injector Startup Detect**: Added startup detection/prompt flow for common IDE clients, including `claude`, `codex`, and `aistudio` (plus `google-antigravity` alias).
